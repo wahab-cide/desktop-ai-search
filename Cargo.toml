@@ -1,0 +1,21 @@
+[package]
+name = "desktop-ai-search"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0.0-alpha", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0-alpha", features = ["shell-open"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+uuid = { version = "1.0", features = ["v4"] }
+
+# AI/ML dependencies 
+# candle-core = "0.3"
+# candle-nn = "0.3"
+# candle-transformers = "0.3"
+# tokenizers = "0.15"
