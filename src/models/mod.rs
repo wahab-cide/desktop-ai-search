@@ -16,7 +16,7 @@ pub struct Document {
     pub metadata: HashMap<String, String>, // JSON-serializable metadata
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum FileType {
     Text,
     Pdf,
@@ -93,4 +93,52 @@ pub struct PerformanceMetrics {
     pub bytes_per_second: f64,
     pub average_processing_time: f64,
     pub memory_usage_mb: f64,
+}
+
+// LLM-related models
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmConfig {
+    pub model_path: PathBuf,
+    pub context_size: usize,
+    pub n_gpu_layers: i32,
+    pub n_threads: i32,
+    pub temperature: f32,
+    pub top_p: f32,
+    pub top_k: i32,
+    pub repeat_penalty: f32,
+    pub max_tokens: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInfo {
+    pub name: String,
+    pub path: PathBuf,
+    pub size_bytes: u64,
+    pub quant_type: String,
+    pub context_size: usize,
+    pub parameter_count: Option<String>,
+    pub license: Option<String>,
+    pub description: Option<String>,
+    pub sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InferenceRequest {
+    pub prompt: String,
+    pub config: Option<LlmConfig>,
+    pub system_prompt: Option<String>,
+    pub stop_tokens: Vec<String>,
+    pub stream: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InferenceResponse {
+    pub text: String,
+    pub tokens_generated: usize,
+    pub tokens_per_second: f32,
+    pub total_time_ms: u64,
+    pub finished: bool,
+    pub stop_reason: Option<String>,
 }

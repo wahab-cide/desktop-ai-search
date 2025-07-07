@@ -1,0 +1,13 @@
+pub mod core;
+pub mod models;
+pub mod error;
+pub mod database;
+pub mod utils;
+pub mod commands;
+pub mod cli;
+pub mod test_embeddings;
+pub mod test_clip;
+pub mod test_screenshot;
+pub mod test_query_understanding;
+pub mod test_boolean_logic;
+// pub mod test_contextual_search;

@@ -33,11 +33,13 @@ impl Database {
         let manager = SqliteConnectionManager::file(db_path)
             .with_init(|conn| {
                 // Enable WAL mode for better performance
-                conn.execute("PRAGMA journal_mode = WAL", [])?;
-                conn.execute("PRAGMA synchronous = NORMAL", [])?;
-                conn.execute("PRAGMA cache_size = 64000", [])?;
-                conn.execute("PRAGMA temp_store = MEMORY", [])?;
-                conn.execute("PRAGMA mmap_size = 134217728", [])?; // 128MB
+                conn.execute_batch("
+                    PRAGMA journal_mode = WAL;
+                    PRAGMA synchronous = NORMAL;
+                    PRAGMA cache_size = 64000;
+                    PRAGMA temp_store = MEMORY;
+                    PRAGMA mmap_size = 134217728;
+                ")?;
                 Ok(())
             });
         
@@ -48,121 +50,16 @@ impl Database {
         
         let db = Self { pool };
         
-        // Initialize schema
-        db.initialize_schema()?;
+        // Run migrations
+        let conn = db.get_connection()?;
+        migrations::run_migrations(&conn)?;
+        drop(conn);
         
         Ok(db)
     }
     
     pub fn get_connection(&self) -> Result<r2d2::PooledConnection<SqliteConnectionManager>> {
         self.pool.get().map_err(DatabaseError::Pool).map_err(AppError::Database)
-    }
-    
-    fn initialize_schema(&self) -> Result<()> {
-        let conn = self.get_connection()?;
-        
-        // Create documents table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS documents (
-                id TEXT PRIMARY KEY,
-                file_path TEXT UNIQUE NOT NULL,
-                content_hash TEXT NOT NULL,
-                file_type TEXT NOT NULL,
-                creation_date INTEGER NOT NULL,
-                modification_date INTEGER NOT NULL,
-                last_indexed INTEGER NOT NULL,
-                file_size INTEGER NOT NULL,
-                metadata TEXT NOT NULL DEFAULT '{}'
-            )",
-            [],
-        ).map_err(DatabaseError::Sqlite)?;
-        
-        // Create FTS5 external content table
-        conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
-                content,
-                content='documents',
-                content_rowid='rowid'
-            )",
-            [],
-        ).map_err(DatabaseError::Sqlite)?;
-        
-        // Create indexing status table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS indexing_status (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                total_files INTEGER NOT NULL DEFAULT 0,
-                indexed_files INTEGER NOT NULL DEFAULT 0,
-                last_update INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT 'idle',
-                errors TEXT NOT NULL DEFAULT '{}',
-                performance_metrics TEXT NOT NULL DEFAULT '{}'
-            )",
-            [],
-        ).map_err(DatabaseError::Sqlite)?;
-        
-        // Create vector embeddings table (for future use)
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS embeddings (
-                id TEXT PRIMARY KEY,
-                document_id TEXT NOT NULL,
-                chunk_id INTEGER NOT NULL,
-                embedding BLOB NOT NULL,
-                model_version TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
-            )",
-            [],
-        ).map_err(DatabaseError::Sqlite)?;
-        
-        // Create document chunks table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS document_chunks (
-                id TEXT PRIMARY KEY,
-                document_id TEXT NOT NULL,
-                chunk_index INTEGER NOT NULL,
-                start_char INTEGER NOT NULL,
-                end_char INTEGER NOT NULL,
-                content TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
-            )",
-            [],
-        ).map_err(DatabaseError::Sqlite)?;
-        
-        // Create indices for performance
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_documents_file_path ON documents(file_path)",
-            [],
-        ).map_err(DatabaseError::Sqlite)?;
-        
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_documents_content_hash ON documents(content_hash)",
-            [],
-        ).map_err(DatabaseError::Sqlite)?;
-        
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_documents_last_indexed ON documents(last_indexed)",
-            [],
-        ).map_err(DatabaseError::Sqlite)?;
-        
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON document_chunks(document_id)",
-            [],
-        ).map_err(DatabaseError::Sqlite)?;
-        
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_embeddings_document_id ON embeddings(document_id)",
-            [],
-        ).map_err(DatabaseError::Sqlite)?;
-        
-        // Initialize indexing status if not exists
-        conn.execute(
-            "INSERT OR IGNORE INTO indexing_status (id) VALUES (1)",
-            [],
-        ).map_err(DatabaseError::Sqlite)?;
-        
-        Ok(())
     }
     
     pub fn health_check(&self) -> Result<bool> {

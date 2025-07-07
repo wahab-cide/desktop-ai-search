@@ -23,6 +23,15 @@ pub enum AppError {
     #[error("UUID parse error: {0}")]
     Uuid(#[from] uuid::Error),
     
+    #[error("Configuration error: {0}")]
+    Configuration(String),
+    
+    #[error("ML/Tensor error: {0}")]
+    Tensor(#[from] candle_core::Error),
+    
+    #[error("Regex error: {0}")]
+    Regex(#[from] regex::Error),
+    
     #[error("Unknown error: {0}")]
     Unknown(String),
 }
@@ -83,6 +92,9 @@ pub enum IndexingError {
     #[error("OCR error: {0}")]
     Ocr(String),
     
+    #[error("OCR initialization error: {0}")]
+    OcrInitialization(String),
+    
     #[error("Audio transcription error: {0}")]
     Transcription(String),
     
@@ -115,6 +127,9 @@ pub enum SearchError {
     
     #[error("Timeout error: query took too long")]
     Timeout,
+    
+    #[error("Invalid query: {0}")]
+    InvalidQuery(String),
     
     #[error("No results found")]
     NoResults,

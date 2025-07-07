@@ -1,2 +1,5 @@
-// Utility modules will be implemented as we progress through the phases
-// pub mod file_watcher;
+pub mod file_watcher;
+pub mod file_types;
+pub mod hashing;
+pub mod metadata;
+pub mod file_processor;
