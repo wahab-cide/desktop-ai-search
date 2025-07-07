@@ -8,8 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "serve": "vite preview",
-    "tauri": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri": "cd .. && cargo tauri dev",
+    "tauri:build": "cd .. && cargo tauri build"
   },
   "license": "MIT",
   "devDependencies": {
@@ -21,6 +21,7 @@
     "vite-plugin-solid": "^2.11.6"
   },
   "dependencies": {
+    "@minht11/solid-virtual-container": "^0.2.1",
     "@tauri-apps/api": "^2.6.0",
     "@tauri-apps/plugin-fs": "^2.4.0",
     "solid-js": "^1.9.5"
