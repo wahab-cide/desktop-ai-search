@@ -1137,24 +1137,30 @@ impl AdaptiveLearningEngine {
         behavioral_data: &BehavioralPatterns,
         feedback: Option<&RelevanceFeedback>,
     ) -> Result<()> {
-        let model = self.learning_models.entry(user_id).or_insert_with(|| {
-            UserLearningModel::new(user_id)
-        });
-
-        // Extract features from behavioral data
+        // Extract features from behavioral data first
         let features = self.extract_features(behavioral_data).await?;
         
-        // Update model with new features
-        model.update_with_features(features).await?;
+        // Then update the model
+        let should_adapt = {
+            let model = self.learning_models.entry(user_id).or_insert_with(|| {
+                UserLearningModel::new(user_id)
+            });
+            
+            // Update model with new features
+            model.update_with_features(features).await?;
+            
+            // Process feedback if available
+            if let Some(feedback) = feedback {
+                model.incorporate_feedback(feedback).await?;
+            }
+            
+            // Check if adaptation is needed
+            model.should_adapt()
+        };
         
-        // Process feedback if available
-        if let Some(feedback) = feedback {
-            model.incorporate_feedback(feedback).await?;
-        }
-        
-        // Trigger adaptation if needed
-        if model.should_adapt() {
-            self.trigger_adaptation(user_id, model).await?;
+        // Trigger adaptation if needed (after releasing the borrow)
+        if should_adapt {
+            self.trigger_adaptation(user_id).await?;
         }
         
         Ok(())
@@ -1174,12 +1180,17 @@ impl AdaptiveLearningEngine {
     }
 
     /// Trigger adaptation based on model state
-    async fn trigger_adaptation(&mut self, user_id: Uuid, model: &mut UserLearningModel) -> Result<()> {
-        for strategy in &self.adaptation_strategies {
-            if strategy.should_apply(model) {
-                let adaptation = strategy.generate_adaptation(model).await?;
-                model.apply_adaptation(adaptation).await?;
+    async fn trigger_adaptation(&mut self, user_id: Uuid) -> Result<()> {
+        let model = self.learning_models.get(&user_id).cloned();
+        if let Some(mut model) = model {
+            for strategy in &self.adaptation_strategies {
+                if strategy.should_apply(&model) {
+                    let adaptation = strategy.generate_adaptation(&model).await?;
+                    model.apply_adaptation(adaptation).await?;
+                }
             }
+            // Update the model in the map
+            self.learning_models.insert(user_id, model);
         }
         
         Ok(())

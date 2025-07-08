@@ -157,6 +157,28 @@ impl Database {
         }
     }
     
+    /// Insert or update document (upsert) - handles duplicate file paths gracefully
+    /// Returns the actual document ID that was used in the database
+    pub fn upsert_document(&self, document: &Document) -> Result<Uuid> {
+        // Check if document already exists by file path
+        if let Some(existing_doc) = self.get_document_by_path(&document.file_path)? {
+            // Clear existing chunks and content for this document
+            self.delete_document_chunks(&existing_doc.id)?;
+            
+            // Update existing document with new data but keep existing ID
+            let updated_doc = Document {
+                id: existing_doc.id, // Keep the existing ID
+                ..document.clone()
+            };
+            self.update_document(&updated_doc)?;
+            Ok(existing_doc.id) // Return the existing ID
+        } else {
+            // Insert new document
+            self.insert_document(document)?;
+            Ok(document.id) // Return the new ID
+        }
+    }
+    
     pub fn delete_document(&self, id: &Uuid) -> Result<()> {
         let conn = self.get_connection()?;
         let tx = conn.unchecked_transaction().map_db_err()?;
@@ -629,33 +651,40 @@ impl Database {
         
         // Prepare FTS5 query - handle different query formats
         let fts_query = prepare_fts5_query(query);
+        println!("🔍 FTS query prepared: '{}'", fts_query);
         
-        // Use FTS5 for full-text search with BM25 ranking
+        // First, let's try a simpler query to debug
+        let test_query = "SELECT COUNT(*) FROM chunks_fts WHERE chunks_fts MATCH ?";
+        match conn.query_row(test_query, params![&fts_query], |row| row.get::<_, i32>(0)) {
+            Ok(count) => println!("🔍 FTS match count for '{}': {}", fts_query, count),
+            Err(e) => println!("❌ FTS test query failed: {}", e),
+        }
+        
+        // Simplified query for external content FTS5 - use subquery instead of CTE
         let mut stmt = conn.prepare(
             "SELECT 
-                chunks_fts.chunk_id,
-                chunks_fts.document_id,
-                chunks_fts.content,
-                bm25(chunks_fts) as relevance_score,
-                snippet(chunks_fts, 0, '<mark>', '</mark>', '...', 32) as highlighted_content
-            FROM chunks_fts
-            WHERE chunks_fts MATCH ?
-            ORDER BY bm25(chunks_fts)
+                dc.id as chunk_id,
+                dc.document_id,
+                dc.content,
+                1.0 as relevance_score,
+                SUBSTR(dc.content, 1, 100) as highlighted_content
+            FROM document_chunks dc
+            WHERE dc.rowid IN (
+                SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ?
+            )
             LIMIT ?"
         ).map_db_err()?;
         
         let mut results = Vec::new();
         
         let rows = stmt.query_map(params![&fts_query, limit], |row| {
-            let bm25_score: f64 = row.get("relevance_score")?;
-            // Convert BM25 score (negative) to positive relevance score
-            let relevance_score = (-bm25_score).max(0.0) as f32;
+            let relevance_score: f64 = row.get("relevance_score")?;
             
             Ok(SearchResult {
                 chunk_id: row.get("chunk_id")?,
                 document_id: Uuid::parse_str(&row.get::<_, String>("document_id")?).unwrap(),
                 content: row.get("content")?,
-                relevance_score,
+                relevance_score: relevance_score as f32,
                 highlighted_content: Some(row.get("highlighted_content")?),
             })
         }).map_db_err()?;
@@ -666,6 +695,7 @@ impl Database {
         
         Ok(results)
     }
+    
     
     /// Delete all chunks and embeddings for a document
     pub fn delete_document_chunks(&self, document_id: &Uuid) -> Result<()> {

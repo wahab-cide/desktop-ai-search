@@ -146,6 +146,14 @@ impl HybridSearchEngine {
         self.embedding_manager = Some(embedding_manager);
     }
 
+    pub fn database(&self) -> &Arc<Database> {
+        &self.database
+    }
+
+    pub fn set_mode(&mut self, mode: SearchMode) {
+        self.config = HybridSearchConfig::for_mode(mode);
+    }
+
     /// Main search entry point - automatically routes based on query analysis
     pub async fn search(&mut self, query: &str) -> Result<Vec<SearchResult>> {
         // Analyze query to determine optimal search strategy

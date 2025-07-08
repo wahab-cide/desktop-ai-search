@@ -1,5 +1,6 @@
 pub mod search;
-// pub mod indexing; // Temporarily disabled due to compilation errors
+pub mod search_v2;
+pub mod indexing;
 pub mod files;
 pub mod ai;
 pub mod embeddings;

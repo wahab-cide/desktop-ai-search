@@ -2,10 +2,10 @@
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
   "productName": "Desktop AI Search",
   "version": "0.1.0",
-  "identifier": "com.yourcompany.desktop-ai-search",
+  "identifier": "com.desktop.aisearch",
   "build": {
-    "beforeDevCommand": "cd frontend && npm run dev",
-    "beforeBuildCommand": "cd frontend && npm run build",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "npm --prefix ./frontend run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "./frontend/dist"
   },
@@ -26,11 +26,10 @@
     }
   },
   "bundle": {
-    "active": false
-  },
-  "plugins": {
-    "fs": {
-      "scope": ["**"]
-    }
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ]
   }
 }

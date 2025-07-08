@@ -40,16 +40,16 @@ pub struct ModelInfo {
 #[tauri::command]
 pub async fn init_ai_system(
     llm_manager: State<'_, Arc<LlmManager>>,
-) -> Result<bool> {
+) -> std::result::Result<bool, String> {
     // Scan for available models
-    llm_manager.scan_models().await?;
+    llm_manager.scan_models().await.map_err(|e| e.to_string())?;
     
     // Get available models
     let models = llm_manager.get_available_models().await;
     
     // Auto-load the first available model if any
     if let Some(first_model) = models.first() {
-        llm_manager.load_model(&first_model.name, None).await?;
+        llm_manager.load_model(&first_model.name, None).await.map_err(|e| e.to_string())?;
         println!("Auto-loaded model: {}", first_model.name);
     }
     
@@ -60,9 +60,9 @@ pub async fn init_ai_system(
 #[tauri::command]
 pub async fn list_ai_models(
     llm_manager: State<'_, Arc<LlmManager>>,
-) -> Result<ModelListResponse> {
+) -> std::result::Result<ModelListResponse, String> {
     // Scan for models first
-    llm_manager.scan_models().await?;
+    llm_manager.scan_models().await.map_err(|e| e.to_string())?;
     
     let available_models = llm_manager.get_available_models().await;
     let current_model = llm_manager.get_current_model_info().await;
@@ -88,8 +88,8 @@ pub async fn list_ai_models(
 pub async fn load_ai_model(
     model_name: String,
     llm_manager: State<'_, Arc<LlmManager>>,
-) -> Result<bool> {
-    llm_manager.load_model(&model_name, None).await?;
+) -> std::result::Result<bool, String> {
+    llm_manager.load_model(&model_name, None).await.map_err(|e| e.to_string())?;
     Ok(true)
 }
 
@@ -98,12 +98,10 @@ pub async fn load_ai_model(
 pub async fn process_ai_query(
     request: AiQueryRequest,
     llm_manager: State<'_, Arc<LlmManager>>,
-) -> Result<AiQueryResponse> {
+) -> std::result::Result<AiQueryResponse, String> {
     // Check if model is loaded
     if !llm_manager.is_model_loaded().await {
-        return Err(crate::error::AppError::Configuration(
-            "No AI model loaded. Please load a model first.".to_string()
-        ));
+        return Err("No AI model loaded. Please load a model first.".to_string());
     }
     
     // Prepare system prompt with search context
@@ -134,7 +132,7 @@ pub async fn process_ai_query(
         &request.query,
         preset,
         system_prompt,
-    ).await?;
+    ).await.map_err(|e| e.to_string())?;
     
     // Get model info
     let model_info = llm_manager.get_current_model_info().await;
@@ -154,7 +152,7 @@ pub async fn generate_query_suggestions(
     partial_query: String,
     context: Option<String>,
     llm_manager: State<'_, Arc<LlmManager>>,
-) -> Result<Vec<String>> {
+) -> std::result::Result<Vec<String>, String> {
     if !llm_manager.is_model_loaded().await {
         // Return empty suggestions if no model loaded
         return Ok(vec![]);
@@ -172,7 +170,7 @@ pub async fn generate_query_suggestions(
         &prompt,
         InferencePreset::Precise,
         Some("You are a search query suggestion engine. Generate only relevant search queries.".to_string()),
-    ).await?;
+    ).await.map_err(|e| e.to_string())?;
     
     // Parse suggestions from response
     let suggestions: Vec<String> = response.text
@@ -191,11 +189,9 @@ pub async fn analyze_search_results(
     query: String,
     results_summary: String,
     llm_manager: State<'_, Arc<LlmManager>>,
-) -> Result<String> {
+) -> std::result::Result<String, String> {
     if !llm_manager.is_model_loaded().await {
-        return Err(crate::error::AppError::Configuration(
-            "No AI model loaded. Please load a model first.".to_string()
-        ));
+        return Err("No AI model loaded. Please load a model first.".to_string());
     }
     
     let prompt = format!(
@@ -209,7 +205,7 @@ pub async fn analyze_search_results(
         &prompt,
         InferencePreset::Balanced,
         Some("You are analyzing search results to help users find information more effectively.".to_string()),
-    ).await?;
+    ).await.map_err(|e| e.to_string())?;
     
     Ok(response.text)
 }
@@ -218,8 +214,8 @@ pub async fn analyze_search_results(
 #[tauri::command]
 pub async fn get_ai_system_info(
     llm_manager: State<'_, Arc<LlmManager>>,
-) -> Result<serde_json::Value> {
-    let mut info = llm_manager.get_system_info()?;
+) -> std::result::Result<serde_json::Value, String> {
+    let mut info = llm_manager.get_system_info().map_err(|e| e.to_string())?;
     
     // Add AI-specific information
     info["model_loaded"] = serde_json::json!(llm_manager.is_model_loaded().await);

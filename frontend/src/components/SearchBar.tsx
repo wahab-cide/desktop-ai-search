@@ -227,7 +227,7 @@ export const SearchBar: Component = () => {
       </Show>
       
       <Show when={isFocused() && (searchSuggestions().length > 0 || isLoadingSuggestions())}>
-        <div class={`absolute top-full left-0 right-0 mt-2 rounded-xl shadow-2xl z-50 max-h-96 overflow-y-auto backdrop-blur-md animate-fadeIn ${theme() === 'light' ? 'bg-white/95 border-gray-200' : 'bg-zinc-900/95 border-zinc-800/60'}`}>
+        <div class={`absolute top-full left-0 right-0 mt-2 rounded-xl z-[9999] max-h-96 overflow-y-auto backdrop-blur-md animate-fadeIn border-2 ${theme() === 'light' ? 'bg-white border-gray-300 shadow-xl shadow-gray-200/50' : 'bg-zinc-900 border-zinc-600 shadow-xl shadow-black/20'}`}>
           <Show when={isLoadingSuggestions()}>
             <div class={`px-4 py-4 text-sm ${themeClasses.textMuted()} flex items-center space-x-3`}>
               <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500"></div>

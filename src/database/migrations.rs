@@ -194,6 +194,8 @@ pub fn get_migrations() -> Vec<Migration> {
 }
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
+    println!("🔧 Starting database migrations...");
+    
     // Create migrations table if it doesn't exist
     conn.execute(
         "CREATE TABLE IF NOT EXISTS migrations (
@@ -215,14 +217,19 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     
     for migration in migrations {
         if migration.version > current_version {
-            println!("Running migration {}: {}", migration.version, migration.description);
+            println!("🔧 Running migration {}: {}", migration.version, migration.description);
             
             // Execute migration in transaction
             let tx = conn.unchecked_transaction().map_db_err()?;
             
             // Execute the migration SQL
-            tx.execute_batch(&migration.sql)
-                .map_err(|e| DatabaseError::Migration(format!("Migration {} failed: {}", migration.version, e)))?;
+            match tx.execute_batch(&migration.sql) {
+                Ok(_) => println!("✅ Migration {} SQL executed successfully", migration.version),
+                Err(e) => {
+                    println!("❌ Migration {} SQL failed: {}", migration.version, e);
+                    return Err(AppError::Database(DatabaseError::Migration(format!("Migration {} failed: {}", migration.version, e))));
+                }
+            }
             
             // Record migration as applied
             tx.execute(

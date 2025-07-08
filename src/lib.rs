@@ -5,6 +5,7 @@ pub mod database;
 pub mod utils;
 pub mod commands;
 pub mod cli;
+pub mod app;
 pub mod test_embeddings;
 pub mod test_clip;
 pub mod test_screenshot;

@@ -2,6 +2,7 @@ import { Component, For, Show, createSignal } from 'solid-js'
 import { searchResults, isSearching, searchMetadata } from '../stores/searchStore'
 import type { SearchResult } from '../types/api'
 import { theme, themeClasses } from '../stores/themeStore'
+import { searchAPI } from '../api'
 
 const FileTypeIcon: Component<{ fileType: string; filePath?: string }> = (props) => {
   const iconMap: Record<string, { icon: string; color: string; bgColor: string }> = {
@@ -32,6 +33,26 @@ const FileTypeIcon: Component<{ fileType: string; filePath?: string }> = (props)
 const ResultCard: Component<{ result: SearchResult }> = (props) => {
   const [isExpanded, setIsExpanded] = createSignal(false)
   const [showPreview, setShowPreview] = createSignal(false)
+
+  const handleOpenFile = async () => {
+    try {
+      const result = await searchAPI.openFileInDefaultApp(props.result.file_path)
+      console.log('File opened:', result)
+    } catch (error) {
+      console.error('Failed to open file:', error)
+      alert(`Failed to open file: ${error}`)
+    }
+  }
+
+  const handleShowInFolder = async () => {
+    try {
+      const result = await searchAPI.showFileInFolder(props.result.file_path)
+      console.log('Showed in folder:', result)
+    } catch (error) {
+      console.error('Failed to show in folder:', error)
+      alert(`Failed to show in folder: ${error}`)
+    }
+  }
   
   const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString('en-US', {
@@ -179,6 +200,7 @@ const ResultCard: Component<{ result: SearchResult }> = (props) => {
               <button 
                 class={`p-2 ${themeClasses.textMuted()} hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-all duration-200`}
                 title="Open file"
+                onClick={handleOpenFile}
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -187,6 +209,7 @@ const ResultCard: Component<{ result: SearchResult }> = (props) => {
               <button 
                 class={`p-2 ${themeClasses.textMuted()} hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-all duration-200`}
                 title="Show in folder"
+                onClick={handleShowInFolder}
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />

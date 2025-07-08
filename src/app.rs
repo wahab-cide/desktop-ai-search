@@ -52,18 +52,44 @@ impl AppState {
 
 /// Setup function for Tauri app
 pub fn setup_app(app: &mut tauri::App) -> Result<()> {
-    // Create runtime for async initialization
-    let runtime = tokio::runtime::Runtime::new()
-        .map_err(|e| crate::error::AppError::Configuration(format!("Failed to create runtime: {}", e)))?;
+    // Initialize database
+    let db_path = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("desktop-ai-search")
+        .join("search.db");
     
-    // Initialize app state
-    let app_state = runtime.block_on(AppState::new())?;
+    // Ensure directory exists
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     
-    // Store state in Tauri
-    app.manage(app_state.database.clone());
-    app.manage(app_state.llm_manager.clone());
-    app.manage(app_state.embedding_manager.clone());
+    let database = Arc::new(Database::new(&db_path)?);
+    app.manage(database);
+    println!("✅ Database initialized successfully at: {}", db_path.display());
     
-    println!("Application initialized successfully");
+    // Initialize LLM Manager
+    match LlmManager::new() {
+        Ok(llm_manager) => {
+            app.manage(Arc::new(llm_manager));
+            println!("✅ LLM Manager initialized successfully");
+        }
+        Err(e) => {
+            println!("⚠️  LLM Manager initialization failed: {}", e);
+            println!("    AI features will be limited");
+        }
+    }
+    
+    // Initialize Embedding Manager  
+    match EmbeddingManager::new() {
+        Ok(embedding_manager) => {
+            app.manage(Arc::new(Mutex::new(embedding_manager)));
+            println!("✅ Embedding Manager initialized successfully");
+        }
+        Err(e) => {
+            println!("⚠️  Embedding Manager initialization failed: {}", e);
+            println!("    Semantic search features will be limited");
+        }
+    }
+    
     Ok(())
 }

@@ -1332,6 +1332,7 @@ dependencies = [
  "html2text",
  "image",
  "infer 0.16.0",
+ "lazy_static",
  "leptess",
  "llama_cpp",
  "lru",

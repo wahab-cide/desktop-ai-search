@@ -14,7 +14,7 @@ pub struct BooleanQueryExecutor {
 }
 
 /// Result of executing a boolean query
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryExecutionResult {
     pub document_ids: Vec<String>,
     pub relevance_scores: HashMap<String, f32>,
@@ -25,7 +25,7 @@ pub struct QueryExecutionResult {
 }
 
 /// Query execution plan showing how the query was executed
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryPlan {
     pub steps: Vec<ExecutionStep>,
     pub estimated_cost: f32,
@@ -34,7 +34,7 @@ pub struct QueryPlan {
 }
 
 /// Individual step in query execution
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionStep {
     pub step_type: StepType,
     pub operation: String,
@@ -44,7 +44,7 @@ pub struct ExecutionStep {
     pub selectivity: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StepType {
     IndexLookup,
     TermSearch,
@@ -55,7 +55,7 @@ pub enum StepType {
 }
 
 /// Performance metrics for query execution
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryPerformanceMetrics {
     pub total_documents_examined: usize,
     pub index_hits: usize,

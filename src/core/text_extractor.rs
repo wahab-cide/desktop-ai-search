@@ -217,16 +217,53 @@ impl TextExtractor {
     }
     
     async fn prepare_for_ocr<P: AsRef<Path>>(&self, path: P) -> Result<ExtractionResult> {
-        // Return placeholder for OCR processing
-        Ok(ExtractionResult {
-            content: String::new(),
-            extraction_mode: ExtractionMode::OcrRequired,
-            page_count: None,
-            word_count: 0,
-            character_count: 0,
-            language: None,
-            metadata: std::collections::HashMap::new(),
-        })
+        // Try to perform OCR on the image
+        use crate::core::ocr_processor::{OcrProcessor, OcrOptions};
+        
+        let ocr_options = OcrOptions::default();
+        match OcrProcessor::new(ocr_options) {
+            Ok(processor) => {
+                match processor.process_image(path.as_ref()).await {
+                    Ok(ocr_result) => {
+                        let normalized_content = self.whitespace_normalizer.replace_all(&ocr_result.text, " ").to_string();
+                        
+                        Ok(ExtractionResult {
+                            content: normalized_content.clone(),
+                            extraction_mode: ExtractionMode::OcrRequired,
+                            page_count: Some(1),
+                            word_count: normalized_content.split_whitespace().count(),
+                            character_count: normalized_content.len(),
+                            language: ocr_result.language,
+                            metadata: ocr_result.metadata,
+                        })
+                    }
+                    Err(_) => {
+                        // If OCR fails, return placeholder indicating OCR was attempted but failed
+                        Ok(ExtractionResult {
+                            content: String::new(),
+                            extraction_mode: ExtractionMode::OcrRequired,
+                            page_count: None,
+                            word_count: 0,
+                            character_count: 0,
+                            language: None,
+                            metadata: std::collections::HashMap::new(),
+                        })
+                    }
+                }
+            }
+            Err(_) => {
+                // OCR processor initialization failed (likely Tesseract not installed)
+                Ok(ExtractionResult {
+                    content: String::new(),
+                    extraction_mode: ExtractionMode::OcrRequired,
+                    page_count: None,
+                    word_count: 0,
+                    character_count: 0,
+                    language: None,
+                    metadata: std::collections::HashMap::new(),
+                })
+            }
+        }
     }
     
     async fn prepare_for_transcription<P: AsRef<Path>>(&self, path: P) -> Result<ExtractionResult> {

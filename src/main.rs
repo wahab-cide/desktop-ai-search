@@ -11,7 +11,7 @@ mod app;
 mod test_screenshot;
 mod test_query_understanding;
 
-use commands::{search, indexing, files, ai, embeddings};
+use commands::{search, search_v2, indexing, files, ai, embeddings};
 
 #[tokio::main]
 async fn main() {
@@ -35,17 +35,29 @@ async fn main() {
             search::search_documents,
             search::search_with_filters,
             search::get_search_suggestions,
+            search::rebuild_search_index,
+            
+            // Advanced search commands (v2)
+            search_v2::search,
+            search_v2::get_search_suggestions_v2,
+            search_v2::get_file_type_counts,
             
             // Indexing commands
             indexing::index_file,
-            indexing::index_directory, 
+            indexing::index_directory,
+            indexing::index_directory_incremental,
             indexing::get_indexing_status,
-            indexing::pause_indexing,
-            indexing::resume_indexing,
+            indexing::get_indexing_statistics,
+            indexing::reset_indexing_state,
+            indexing::start_background_indexing,
+            indexing::test_indexing_params,
+            indexing::test_camel_case,
+            indexing::index_directory_simple,
             
             // File commands
             files::get_file_content,
-            files::get_file_metadata,
+            files::open_file_in_default_app,
+            files::show_file_in_folder,
             
             // AI commands
             ai::init_ai_system,

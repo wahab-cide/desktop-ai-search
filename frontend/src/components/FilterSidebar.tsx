@@ -1,5 +1,5 @@
 import { Component, For, Show, createSignal } from 'solid-js'
-import { filters, setFilters, availableFileTypes, dateRanges } from '../stores/searchStore'
+import { filters, setFilters, availableFileTypes, dateRanges, fileSizes } from '../stores/searchStore'
 import { theme, themeClasses } from '../stores/themeStore'
 
 export const FilterSidebar: Component = () => {
@@ -36,7 +36,7 @@ export const FilterSidebar: Component = () => {
   }
   
   return (
-    <div class={`${themeClasses.bgTertiary()} border-r ${themeClasses.border()} transition-all duration-300 shadow-lg backdrop-blur-sm ${
+    <div class={`${themeClasses.bgTertiary()} border-r ${themeClasses.border()} transition-all duration-300 shadow-lg backdrop-blur-sm z-10 ${
       isExpanded() ? 'w-72' : 'w-16'
     }`}>
       <div class="h-full flex flex-col">

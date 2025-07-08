@@ -1,6 +1,12 @@
 import { createSignal, createEffect, batch } from 'solid-js'
+import { mockSearchAPI, isDevelopment } from '../mock-api'
 import { searchAPI } from '../api'
-import type { SearchResult, SearchSuggestion, SearchFilters, SearchMetadata } from '../types/api'
+import type { SearchResult, SearchSuggestion, SearchFilters, SearchMetadata, FileType } from '../types/api'
+
+// Use mock API in development, real API in production
+// Set to false to test real backend even in development
+const USE_MOCK = false
+const api = (isDevelopment && USE_MOCK) ? mockSearchAPI : searchAPI
 
 // Core search state
 export const [searchQuery, setSearchQuery] = createSignal('')
@@ -19,17 +25,22 @@ export const [filters, setFilters] = createSignal<SearchFilters>({
   searchMode: 'hybrid',
   includeContent: true,
   includeOCR: true,
-  searchImages: true
+  searchImages: true,
+  fileSize: 'any'
 })
 
 // Available filter options
-export const [availableFileTypes, setAvailableFileTypes] = createSignal([
+export const [availableFileTypes, setAvailableFileTypes] = createSignal<FileType[]>([
   { type: 'pdf', label: 'PDF Documents', count: 0 },
   { type: 'docx', label: 'Word Documents', count: 0 },
+  { type: 'doc', label: 'Word Documents (Legacy)', count: 0 },
   { type: 'txt', label: 'Text Files', count: 0 },
   { type: 'md', label: 'Markdown', count: 0 },
-  { type: 'image', label: 'Images', count: 0 },
-  { type: 'audio', label: 'Audio Files', count: 0 },
+  { type: 'jpg', label: 'JPEG Images', count: 0 },
+  { type: 'png', label: 'PNG Images', count: 0 },
+  { type: 'gif', label: 'GIF Images', count: 0 },
+  { type: 'mp3', label: 'MP3 Audio', count: 0 },
+  { type: 'mp4', label: 'MP4 Video', count: 0 },
   { type: 'email', label: 'Emails', count: 0 }
 ])
 
@@ -39,6 +50,13 @@ export const dateRanges = [
   { value: 'week', label: 'Last 7 Days' },
   { value: 'month', label: 'Last 30 Days' },
   { value: 'year', label: 'Last Year' }
+]
+
+export const fileSizes = [
+  { value: 'any', label: 'Any size' },
+  { value: 'small', label: 'Small (< 1MB)' },
+  { value: 'medium', label: 'Medium (1-10MB)' },
+  { value: 'large', label: 'Large (> 10MB)' }
 ]
 
 // Debounced search function
@@ -55,7 +73,7 @@ export const performSearch = async (query: string, currentFilters: SearchFilters
   setIsSearching(true)
   try {
     const startTime = Date.now()
-    const results = await searchAPI.search(query, currentFilters)
+    const results = await api.search(query, currentFilters)
     const endTime = Date.now()
     
     batch(() => {
@@ -63,8 +81,8 @@ export const performSearch = async (query: string, currentFilters: SearchFilters
       setSearchMetadata({
         totalResults: results.total || 0,
         searchTime: (endTime - startTime) / 1000,
-        queryIntent: results.queryIntent,
-        suggestedQuery: results.suggestedQuery
+        queryIntent: results.query_intent,
+        suggestedQuery: results.suggested_query
       })
     })
   } catch (error) {
@@ -88,7 +106,7 @@ export const loadSuggestions = async (query: string) => {
   
   setIsLoadingSuggestions(true)
   try {
-    const suggestions = await searchAPI.getSuggestions(query)
+    const suggestions = await api.getSuggestions(query)
     setSearchSuggestions(suggestions)
   } catch (error) {
     console.error('Failed to load suggestions:', error)
@@ -122,7 +140,7 @@ createEffect(() => {
 // Load initial file type counts
 export const loadFileTypeCounts = async () => {
   try {
-    const counts = await searchAPI.getFileTypeCounts()
+    const counts = await api.getFileTypeCounts()
     setAvailableFileTypes(prevTypes => 
       prevTypes.map(type => ({
         ...type,

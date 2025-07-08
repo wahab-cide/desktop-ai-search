@@ -76,7 +76,7 @@ pub struct FuzzyConfig {
 }
 
 /// Query parsing result with metadata
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedQuery {
     pub tree: QueryNode,
     pub original_query: String,

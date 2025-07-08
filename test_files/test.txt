@@ -1,1 +1,0 @@
-This is a simple test text file to verify the system is working correctly.
