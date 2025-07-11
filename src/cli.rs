@@ -1,6 +1,7 @@
 use crate::database::Database;
 use crate::utils::file_processor::FileProcessor;
 use crate::core::document_processor::{DocumentProcessor, ProcessingOptions};
+use crate::core::chunker::ChunkingOptions;
 use crate::core::ocr_processor::OcrProcessor;
 use crate::core::audio_processor::AudioProcessor;
 use crate::core::llm_manager::{LlmManager, InferencePreset};
@@ -11,6 +12,29 @@ use crate::models::InferenceRequest;
 use crate::error::Result;
 use std::path::PathBuf;
 use std::env;
+use std::sync::Arc;
+use tokio::sync::{Mutex, OnceCell};
+
+/// Global embedding manager singleton for CLI performance optimization
+static GLOBAL_EMBEDDING_MANAGER: OnceCell<Arc<Mutex<EmbeddingManager>>> = OnceCell::const_new();
+
+/// Get or initialize the global embedding manager
+async fn get_global_embedding_manager() -> Result<Arc<Mutex<EmbeddingManager>>> {
+    GLOBAL_EMBEDDING_MANAGER.get_or_try_init(|| async {
+        println!("🔧 Initializing global embedding manager...");
+        let mut embedding_manager = EmbeddingManager::new()?;
+        
+        // Pre-load the default model
+        if let Err(_) = embedding_manager.load_model("all-minilm-l6-v2", None).await {
+            println!("📥 Downloading embedding model...");
+            embedding_manager.download_model("all-minilm-l6-v2").await?;
+            embedding_manager.load_model("all-minilm-l6-v2", None).await?;
+        }
+        
+        println!("✅ Global embedding manager ready for fast searches");
+        Ok(Arc::new(Mutex::new(embedding_manager)))
+    }).await.cloned()
+}
 
 pub enum CliCommand {
     InitDb { path: PathBuf },
@@ -752,20 +776,67 @@ pub async fn execute_cli_command(command: CliCommand) -> Result<()> {
             let db_path = db_path.unwrap_or_else(|| PathBuf::from("./search.db"));
             let database = Database::new(&db_path)?;
             
-            // Initialize document processor with embedding manager
-            let mut doc_processor = DocumentProcessor::default();
-            doc_processor.set_embedding_manager("all-minilm-l6-v2").await?;
+            // Use global embedding manager for better performance
+            let embedding_manager = get_global_embedding_manager().await?;
+            
+            // Initialize optimized document processor
+            let processing_options = ProcessingOptions {
+                max_concurrent_documents: 12, // Increased from 4 to 12
+                skip_empty_documents: true,
+                min_content_length: 50,
+                extract_metadata: true,
+                preserve_original_structure: true,
+                chunking_options: ChunkingOptions {
+                    target_chunk_size: 1000,
+                    overlap_percentage: 0.10, // 10% overlap
+                    ..Default::default()
+                },
+            };
+            
+            let mut doc_processor = DocumentProcessor::new(processing_options);
+            doc_processor.set_embedding_manager_instance(embedding_manager).await?;
             
             // First scan for documents
             let mut file_processor = FileProcessor::new()?;
-            let documents = file_processor.scan_directory(&directory).await?;
+            let all_documents = file_processor.scan_directory(&directory).await?;
             
-            if documents.is_empty() {
+            if all_documents.is_empty() {
                 println!("No documents found to process.");
                 return Ok(());
             }
             
-            println!("Found {} documents to process", documents.len());
+            println!("Found {} total documents", all_documents.len());
+            
+            // Implement incremental indexing - only process changed files
+            let mut documents_to_process = Vec::new();
+            for doc in all_documents {
+                // Check if document exists and has been modified
+                match database.get_document_by_path(&doc.file_path) {
+                    Ok(Some(existing_doc)) => {
+                        // Compare modification dates
+                        if doc.modification_date > existing_doc.modification_date {
+                            println!("📄 File modified: {}", doc.file_path);
+                            documents_to_process.push(doc);
+                        }
+                    }
+                    Ok(None) => {
+                        // New document
+                        println!("📄 New file: {}", doc.file_path);
+                        documents_to_process.push(doc);
+                    }
+                    Err(_) => {
+                        // Error checking, process it anyway
+                        documents_to_process.push(doc);
+                    }
+                }
+            }
+            
+            if documents_to_process.is_empty() {
+                println!("✅ All documents are up to date. No processing needed.");
+                return Ok(());
+            }
+            
+            println!("Found {} documents to process (incremental)", documents_to_process.len());
             
             println!("Using embedding model: all-MiniLM-L6-v2");
             
@@ -792,8 +863,8 @@ pub async fn execute_cli_command(command: CliCommand) -> Result<()> {
                 }
             });
             
-            // Process documents
-            let results = doc_processor.process_documents(documents, Some(progress_tx)).await?;
+            // Process documents (incremental)
+            let results = doc_processor.process_documents(documents_to_process, Some(progress_tx)).await?;
             
             // Wait for progress reporting to complete
             progress_handle.await.map_err(|e| crate::error::AppError::Indexing(
@@ -821,18 +892,15 @@ pub async fn execute_cli_command(command: CliCommand) -> Result<()> {
             let limit = limit.unwrap_or(10);
             let threshold = threshold.unwrap_or(0.7);
             
-            // Initialize embedding manager
-            let mut embedding_manager = EmbeddingManager::new()?;
+            // Use global embedding manager for fast performance
+            let embedding_manager = get_global_embedding_manager().await?;
             
-            // Load model if not loaded
-            if embedding_manager.get_current_model_info().is_none() {
-                println!("Loading embedding model...");
-                embedding_manager.load_model("all-minilm-l6-v2", None).await?;
-            }
-            
-            // Generate query embedding
+            // Generate query embedding (model already loaded)
             println!("Generating query embedding...");
-            let query_embeddings = embedding_manager.generate_embeddings(&[query.clone()]).await?;
+            let query_embeddings = {
+                let manager = embedding_manager.lock().await;
+                manager.generate_embeddings(&[query.clone()]).await?
+            };
             
             if query_embeddings.is_empty() {
                 println!("Failed to generate embedding for query");
@@ -908,16 +976,9 @@ pub async fn execute_cli_command(command: CliCommand) -> Result<()> {
             // Initialize hybrid search engine
             let mut search_engine = HybridSearchEngine::new(database.clone());
             
-            // Initialize embedding manager if available
-            let mut embedding_manager = EmbeddingManager::new()?;
-            if embedding_manager.get_current_model_info().is_none() {
-                println!("Loading embedding model for semantic search...");
-                embedding_manager.load_model("all-minilm-l6-v2", None).await?;
-            }
-            
-            search_engine.set_embedding_manager(
-                std::sync::Arc::new(tokio::sync::Mutex::new(embedding_manager))
-            ).await;
+            // Use global embedding manager for fast performance
+            let embedding_manager = get_global_embedding_manager().await?;
+            search_engine.set_embedding_manager(embedding_manager).await;
             
             // Perform search
             println!("Executing hybrid search...");

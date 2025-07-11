@@ -22,33 +22,32 @@ impl<T> SqliteResultExt<T> for rusqlite::Result<T> {
 fn prepare_fts5_query(query: &str) -> String {
     let query = query.trim();
     
-    // If already contains quotes, assume user knows FTS5 syntax
-    if query.contains('"') {
+    // If already contains quotes or special operators, assume user knows FTS5 syntax
+    if query.contains('"') || query.contains(" AND ") || query.contains(" OR ") {
         return query.to_string();
     }
     
-    // Handle phrase queries (multiple words)
-    if query.contains(' ') {
-        let words: Vec<&str> = query.split_whitespace().collect();
-        if words.len() > 1 {
-            // For multi-word queries, create phrase query (exact match gets priority)
-            return format!("\"{}\"", query);
-        }
+    // For simple queries, use prefix matching on each word
+    let words: Vec<&str> = query.split_whitespace().collect();
+    if words.is_empty() {
+        return query.to_string();
     }
     
-    // Single word - escape special characters and add prefix matching
-    let escaped = query.replace('"', "\"\"")
-                      .replace('*', "")
-                      .replace(':', "")
-                      .replace('(', "")
-                      .replace(')', "");
+    // Create a query that matches any of the words with prefix matching
+    let terms: Vec<String> = words.iter()
+        .map(|word| {
+            let escaped = word.replace('"', "\"\"")
+                             .replace('*', "")
+                             .replace(':', "")
+                             .replace('(', "")
+                             .replace(')', "");
+            // Use prefix matching for better results
+            format!("{}*", escaped)
+        })
+        .collect();
     
-    // For single terms, use both exact and prefix matching
-    if escaped.len() > 2 {
-        format!("({} OR {}*)", escaped, escaped)
-    } else {
-        escaped
-    }
+    // Join with OR to match any of the terms
+    terms.join(" OR ")
 }
 
 use crate::core::chunker::TextChunk;
@@ -667,8 +666,11 @@ impl Database {
                 dc.document_id,
                 dc.content,
                 1.0 as relevance_score,
-                SUBSTR(dc.content, 1, 100) as highlighted_content
+                SUBSTR(dc.content, 1, 100) as highlighted_content,
+                d.file_path,
+                d.file_type
             FROM document_chunks dc
+            JOIN documents d ON dc.document_id = d.id
             WHERE dc.rowid IN (
                 SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ?
             )
@@ -686,6 +688,8 @@ impl Database {
                 content: row.get("content")?,
                 relevance_score: relevance_score as f32,
                 highlighted_content: Some(row.get("highlighted_content")?),
+                path: std::path::PathBuf::from(row.get::<_, String>("file_path")?),
+                file_type: row.get("file_type")?,
             })
         }).map_db_err()?;
         
@@ -785,7 +789,7 @@ impl Database {
     pub fn get_images_with_embeddings(&self, model_id: Option<&str>) -> Result<Vec<ImageWithEmbedding>> {
         let conn = self.get_connection()?;
         
-        let query = if let Some(model) = model_id {
+        let query = if let Some(_model) = model_id {
             "SELECT * FROM images_with_embeddings WHERE embedding_model_id = ?"
         } else {
             "SELECT * FROM images_with_embeddings WHERE embedding IS NOT NULL"
@@ -1099,13 +1103,15 @@ pub struct SimilarChunk {
 }
 
 // Helper struct for FTS search results
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SearchResult {
     pub chunk_id: String,
     pub document_id: Uuid,
     pub content: String,
     pub relevance_score: f32,
     pub highlighted_content: Option<String>,
+    pub path: std::path::PathBuf,
+    pub file_type: String,
 }
 
 // Helper function to calculate cosine similarity
@@ -1291,5 +1297,247 @@ impl Database {
         ).map_db_err()?;
         
         Ok(())
+    }
+    
+    /// Get file type counts for all indexed documents
+    pub fn get_file_type_counts(&self) -> Result<HashMap<String, usize>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT file_type, COUNT(*) as count FROM documents GROUP BY file_type"
+        ).map_db_err()?;
+        
+        let mut counts = HashMap::new();
+        let rows = stmt.query_map([], |row| {
+            let file_type_json: String = row.get("file_type")?;
+            let count: i64 = row.get("count")?;
+            Ok((file_type_json, count as usize))
+        }).map_db_err()?;
+        
+        for row in rows {
+            let (file_type_json, count) = row.map_db_err()?;
+            // Parse the FileType enum to get the string representation
+            if let Ok(file_type) = serde_json::from_str::<crate::models::FileType>(&file_type_json) {
+                let type_str = match file_type {
+                    crate::models::FileType::Pdf => "pdf",
+                    crate::models::FileType::Docx => "docx",
+                    crate::models::FileType::Text => "txt",
+                    crate::models::FileType::Markdown => "md",
+                    crate::models::FileType::Email => "email",
+                    crate::models::FileType::Image => {
+                        // For images, we need to check the actual file extension
+                        // This is a simplified approach - we'll count all images as different types
+                        "jpg" // Default to jpg for now
+                    },
+                    crate::models::FileType::Audio => "mp3",
+                    crate::models::FileType::Video => "mp4",
+                    _ => "unknown",
+                };
+                *counts.entry(type_str.to_string()).or_insert(0) += count;
+            }
+        }
+        
+        // Get more detailed image counts by extension
+        let image_counts = self.get_image_file_counts()?;
+        for (ext, count) in image_counts {
+            counts.insert(ext, count);
+        }
+        
+        Ok(counts)
+    }
+    
+    /// Get detailed image file counts by extension
+    fn get_image_file_counts(&self) -> Result<HashMap<String, usize>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT file_path FROM documents WHERE file_type = ?"
+        ).map_db_err()?;
+        
+        let file_type_json = serde_json::to_string(&crate::models::FileType::Image)?;
+        let rows = stmt.query_map(params![file_type_json], |row| {
+            let file_path: String = row.get("file_path")?;
+            Ok(file_path)
+        }).map_db_err()?;
+        
+        let mut counts = HashMap::new();
+        for row in rows {
+            let file_path = row.map_db_err()?;
+            if let Some(ext) = file_path.split('.').last() {
+                let ext_lower = ext.to_lowercase();
+                *counts.entry(ext_lower).or_insert(0) += 1;
+            }
+        }
+        
+        Ok(counts)
+    }
+    
+    /// Get all documents of a specific file type
+    pub fn get_documents_by_file_type(&self, file_type: &str, limit: Option<usize>) -> Result<Vec<Document>> {
+        let conn = self.get_connection()?;
+        
+        // Map frontend file type strings to our FileType enum
+        let db_file_type = match file_type {
+            "pdf" => crate::models::FileType::Pdf,
+            "docx" | "doc" => crate::models::FileType::Docx, // Map both docx and doc to Docx
+            "txt" => crate::models::FileType::Text,
+            "md" => crate::models::FileType::Markdown,
+            "email" => crate::models::FileType::Email,
+            "jpg" | "jpeg" | "png" | "gif" | "webp" | "svg" => crate::models::FileType::Image,
+            "mp3" | "wav" | "flac" => crate::models::FileType::Audio,
+            "mp4" | "avi" | "mov" | "mkv" => crate::models::FileType::Video,
+            _ => return Ok(Vec::new()), // Unknown file type
+        };
+        
+        let file_type_json = serde_json::to_string(&db_file_type)?;
+        
+        let query = if let Some(limit) = limit {
+            format!(
+                "SELECT * FROM documents WHERE file_type = ? ORDER BY modification_date DESC LIMIT {}",
+                limit
+            )
+        } else {
+            "SELECT * FROM documents WHERE file_type = ? ORDER BY modification_date DESC".to_string()
+        };
+        
+        let mut stmt = conn.prepare(&query).map_db_err()?;
+        let rows = stmt.query_map(params![file_type_json], |row| {
+            Document::from_row(row)
+        }).map_db_err()?;
+        
+        let mut documents = Vec::new();
+        for row in rows {
+            let document = row.map_db_err()?;
+            
+            // For image types, filter by actual file extension
+            if matches!(db_file_type, crate::models::FileType::Image) {
+                if let Some(ext) = document.file_path.split('.').last() {
+                    let ext_lower = ext.to_lowercase();
+                    if file_type == ext_lower || (file_type == "jpeg" && ext_lower == "jpg") {
+                        documents.push(document);
+                    }
+                }
+            } else {
+                documents.push(document);
+            }
+        }
+        
+        Ok(documents)
+    }
+    
+    /// Get all documents with pagination
+    pub fn get_all_documents_paginated(&self, offset: usize, limit: usize) -> Result<Vec<Document>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT * FROM documents ORDER BY modification_date DESC LIMIT ? OFFSET ?"
+        ).map_db_err()?;
+        
+        let rows = stmt.query_map(params![limit, offset], |row| {
+            Document::from_row(row)
+        }).map_db_err()?;
+        
+        let mut documents = Vec::new();
+        for row in rows {
+            documents.push(row.map_db_err()?);
+        }
+        
+        Ok(documents)
+    }
+    
+    /// Get total document count
+    pub fn get_total_document_count(&self) -> Result<usize> {
+        let conn = self.get_connection()?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM documents",
+            [],
+            |row| row.get(0)
+        ).map_db_err()?;
+        
+        Ok(count as usize)
+    }
+    
+    /// Rebuild FTS5 index from scratch
+    pub fn rebuild_fts_index(&self) -> Result<usize> {
+        let conn = self.get_connection()?;
+        let tx = conn.unchecked_transaction().map_db_err()?;
+        
+        println!("🔧 Rebuilding FTS5 index...");
+        
+        // First, clear the existing FTS index
+        tx.execute("DELETE FROM chunks_fts", [])
+            .map_db_err()?;
+        
+        // Count chunks to process
+        let chunk_count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM document_chunks",
+            [],
+            |row| row.get(0)
+        ).map_db_err()?;
+        
+        println!("🔧 Found {} chunks to index", chunk_count);
+        
+        // Rebuild the FTS index from document_chunks
+        let rows_affected = tx.execute(
+            "INSERT INTO chunks_fts(rowid, content, document_id, id)
+             SELECT rowid, content, document_id, id FROM document_chunks",
+            []
+        ).map_db_err()?;
+        
+        println!("🔧 Inserted {} rows into FTS index", rows_affected);
+        
+        // Optimize the FTS index
+        tx.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('optimize')", [])
+            .map_db_err()?;
+        
+        tx.commit().map_db_err()?;
+        
+        // Verify the rebuild
+        let fts_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM chunks_fts WHERE chunks_fts MATCH 'the OR a OR of'",
+            [],
+            |row| row.get(0)
+        ).unwrap_or(0);
+        
+        println!("✅ FTS index rebuilt. Test query found {} matches", fts_count);
+        
+        Ok(rows_affected)
+    }
+    
+    /// Get all documents without pagination (for cleanup operations)
+    pub fn get_all_documents(&self) -> Result<Vec<Document>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT * FROM documents ORDER BY modification_date DESC"
+        ).map_db_err()?;
+        
+        let rows = stmt.query_map([], |row| {
+            Document::from_row(row)
+        }).map_db_err()?;
+        
+        let mut documents = Vec::new();
+        for row in rows {
+            documents.push(row.map_db_err()?);
+        }
+        
+        Ok(documents)
+    }
+    
+    
+    /// Delete all chunks for a document and return count of deleted chunks
+    pub fn delete_chunks_by_document_id(&self, document_id: &Uuid) -> Result<u32> {
+        let conn = self.get_connection()?;
+        let document_id_str = document_id.to_string();
+        
+        // First delete embeddings for these chunks
+        conn.execute(
+            "DELETE FROM embeddings WHERE document_id = ?",
+            params![document_id_str]
+        ).map_db_err()?;
+        
+        // Then delete the chunks
+        let rows_affected = conn.execute(
+            "DELETE FROM document_chunks WHERE document_id = ?",
+            params![document_id_str]
+        ).map_db_err()?;
+        
+        Ok(rows_affected as u32)
     }
 }

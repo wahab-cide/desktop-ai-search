@@ -562,7 +562,7 @@ impl ExecutionContext {
 }
 
 impl FieldSearcher for BooleanQueryExecutor {
-    fn search_field(&self, field: &str, value: &str, term_type: &TermType) -> Result<Vec<String>> {
+    fn search_field(&self, _field: &str, _value: &str, term_type: &TermType) -> Result<Vec<String>> {
         // Synchronous wrapper for async methods
         // In practice, you'd use an async runtime or different architecture
         match term_type {

@@ -1,0 +1,142 @@
+# Example configuration for Desktop AI Search
+# Copy this file to config.toml and customize as needed
+
+[database]
+# Database connection settings
+database_url = "search.db"
+max_connections = 10
+connection_timeout = 30
+pool_timeout = 30
+
+[search]
+# Search configuration
+max_results = 100
+search_timeout = 10
+enable_fuzzy_search = true
+enable_stemming = true
+enable_stop_words = true
+default_operator = "AND"  # "AND" or "OR"
+min_query_length = 2
+max_query_length = 500
+
+[indexing]
+# Indexing configuration
+max_file_size = 100_000_000  # 100MB
+max_content_length = 1_000_000  # 1MB
+batch_size = 1000
+max_concurrent_files = 10
+watch_for_changes = true
+indexing_interval = 300  # seconds
+
+# File type restrictions
+excluded_extensions = [
+    ".tmp", ".cache", ".log", ".lock", ".pid",
+    ".swp", ".swo", ".bak", ".old", ".orig"
+]
+
+included_extensions = [
+    ".txt", ".md", ".pdf", ".doc", ".docx",
+    ".html", ".htm", ".xml", ".json", ".csv",
+    ".py", ".rs", ".js", ".ts", ".cpp", ".c",
+    ".h", ".hpp", ".java", ".go", ".rb", ".php"
+]
+
+# Directory restrictions
+excluded_directories = [
+    "node_modules", ".git", ".svn", ".hg",
+    "target", "build", "dist", ".next",
+    "__pycache__", ".pytest_cache", ".coverage"
+]
+
+[models]
+# AI model configuration
+embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
+llm_model = "microsoft/DialoGPT-medium"
+device = "auto"  # "cpu", "cuda", "auto"
+max_model_memory = 2048  # MB
+enable_model_caching = true
+model_cache_size = 512  # MB
+
+# Model download settings
+auto_download_models = true
+model_download_timeout = 300  # seconds
+huggingface_cache_dir = "~/.cache/huggingface"
+
+[performance]
+# Performance tuning
+cache_size = 512  # MB
+max_threads = 8
+enable_compression = true
+compression_level = 6
+enable_parallel_processing = true
+
+# Memory limits
+max_memory_usage = 4096  # MB
+memory_cleanup_threshold = 0.8
+memory_cleanup_interval = 60  # seconds
+
+[logging]
+# Logging configuration
+level = "info"  # "error", "warn", "info", "debug", "trace"
+file = "logs/app.log"
+max_file_size = 10_000_000  # 10MB
+max_files = 5
+enable_console_output = true
+enable_file_output = true
+log_format = "json"  # "json" or "text"
+
+[security]
+# Security settings
+enable_input_validation = true
+max_query_complexity = 100
+rate_limit_per_minute = 1000
+enable_audit_logging = true
+audit_log_file = "logs/audit.log"
+
+# File access restrictions
+allow_symbolic_links = false
+max_path_length = 4096
+restricted_paths = [
+    "/etc", "/proc", "/sys", "/dev",
+    "C:\\Windows", "C:\\System32"
+]
+
+[ui]
+# User interface settings
+theme = "system"  # "light", "dark", "system"
+language = "en"
+enable_keyboard_shortcuts = true
+enable_search_suggestions = true
+search_suggestions_count = 10
+enable_file_previews = true
+max_preview_size = 1_000_000  # 1MB
+
+[monitoring]
+# Monitoring and telemetry
+enable_metrics = true
+metrics_interval = 60  # seconds
+enable_health_checks = true
+health_check_interval = 30  # seconds
+enable_performance_tracking = true
+
+# Alerting thresholds
+cpu_threshold = 80.0  # percentage
+memory_threshold = 85.0  # percentage
+disk_threshold = 90.0  # percentage
+error_rate_threshold = 0.05  # 5%
+
+[backup]
+# Backup configuration
+enable_auto_backup = true
+backup_interval = 86400  # 24 hours in seconds
+backup_retention_days = 30
+backup_directory = "backups"
+backup_compression = true
+
+[development]
+# Development settings (only used in development mode)
+enable_debug_logging = false
+enable_hot_reload = false
+enable_cors = true
+cors_origins = ["http://localhost:3000", "http://localhost:8080"]
+enable_api_documentation = true

@@ -257,7 +257,7 @@ impl OcrProcessor {
     /// Get available languages
     pub fn get_available_languages() -> Result<Vec<String>> {
         match LepTess::new(None, "eng") {
-            Ok(tesseract) => {
+            Ok(_tesseract) => {
                 // TODO: Fix when leptess API supports this method
                 let languages = vec!["eng".to_string()]; // Default language
                 Ok(languages)
@@ -339,12 +339,47 @@ impl OcrProcessor {
         Ok(gray_image.into_raw())
     }
     
-    fn extract_word_boxes(&self, _tesseract: &mut LepTess) -> Result<Vec<BoundingBox>> {
+    fn extract_word_boxes(&self, tesseract: &mut LepTess) -> Result<Vec<BoundingBox>> {
         let mut boxes = Vec::new();
         
-        // This is a placeholder implementation
-        // In a real implementation, you would use Tesseract's box detection APIs
-        // For now, return empty vector
+        // Get word-level bounding boxes from Tesseract
+        // The second parameter is for whether to return text with boxes
+        if let Some(components) = tesseract.get_component_boxes(leptess::capi::TessPageIteratorLevel_RIL_WORD, false) {
+            // The components is a Boxa (Box Array) from Leptonica
+            // We need to iterate through the boxes using the proper API
+            let num_boxes = components.get_n();
+            
+            for i in 0..num_boxes {
+                if let Some(bbox) = components.get_box(i) {
+                    // Get the box dimensions
+                    let mut x = 0i32;
+                    let mut y = 0i32;
+                    let mut w = 0i32;
+                    let mut h = 0i32;
+                    bbox.get_geometry(Some(&mut x), Some(&mut y), Some(&mut w), Some(&mut h));
+                    
+                    // Set rectangle to this word's area
+                    tesseract.set_rectangle(x, y, w, h);
+                    
+                    // Get text for this word
+                    if let Ok(word_text) = tesseract.get_utf8_text() {
+                        let word_confidence = tesseract.mean_text_conf() as f32 / 100.0;
+                        
+                        // Only include words above confidence threshold
+                        if word_confidence >= self.options.confidence_threshold {
+                            boxes.push(BoundingBox {
+                                text: word_text.trim().to_string(),
+                                x: x as u32,
+                                y: y as u32,
+                                width: w as u32,
+                                height: h as u32,
+                                confidence: word_confidence,
+                            });
+                        }
+                    }
+                }
+            }
+        }
         
         Ok(boxes)
     }

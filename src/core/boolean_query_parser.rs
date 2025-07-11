@@ -195,7 +195,7 @@ impl BooleanQueryParser {
         let normalized_query = self.normalize_query(query);
         
         // Tokenize the input
-        let mut lexer = QueryLexer::new(&normalized_query);
+        let lexer = QueryLexer::new(&normalized_query);
         let mut parser = QueryParser::new(lexer, &self.field_aliases, &self.operator_aliases);
         
         // Parse into AST

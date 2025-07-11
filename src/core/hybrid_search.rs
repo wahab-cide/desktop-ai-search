@@ -366,26 +366,44 @@ impl HybridSearchEngine {
     fn build_fts_query(&self, analysis: &QueryAnalysis) -> String {
         let mut query_parts = Vec::new();
 
-        // Add quoted phrases with high priority
+        // Add quoted phrases with high priority (exact phrase search)
         for phrase in &analysis.quoted_phrases {
             query_parts.push(format!("\"{}\"", phrase));
         }
 
-        // Add keywords
+        // Add keywords with proper FTS5 syntax
         if !analysis.keywords.is_empty() {
             if analysis.has_boolean_operators {
                 // Use keywords as-is if boolean operators detected
                 query_parts.push(analysis.keywords.join(" "));
             } else {
-                // Default to AND behavior for multiple keywords
-                let keyword_query = analysis.keywords.join(" AND ");
-                query_parts.push(keyword_query);
+                // For natural language queries like "machine learning", 
+                // try both phrase search and AND search
+                if analysis.keywords.len() == 2 && !analysis.is_factual_query {
+                    // For two-word terms, try phrase first, then individual terms
+                    let phrase = analysis.keywords.join(" ");
+                    let individual_terms = analysis.keywords.join(" AND ");
+                    query_parts.push(format!("\"{}\" OR ({})", phrase, individual_terms));
+                } else if analysis.keywords.len() <= 3 {
+                    // For short queries, use phrase search first
+                    let phrase = analysis.keywords.join(" ");
+                    query_parts.push(format!("\"{}\"", phrase));
+                } else {
+                    // For longer queries, use AND logic
+                    let keyword_query = analysis.keywords.join(" AND ");
+                    query_parts.push(keyword_query);
+                }
             }
         }
 
-        // Fallback to original query if no structured elements found
+        // Fallback to simple phrase search for original query
         if query_parts.is_empty() {
-            query_parts.push(analysis.query.clone());
+            // For simple queries, use phrase search
+            if analysis.query.split_whitespace().count() <= 3 {
+                query_parts.push(format!("\"{}\"", analysis.query));
+            } else {
+                query_parts.push(analysis.query.clone());
+            }
         }
 
         query_parts.join(" ")

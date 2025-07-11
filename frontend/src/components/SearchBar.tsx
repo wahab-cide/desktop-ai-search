@@ -1,6 +1,6 @@
 import { Component, Show, For, createSignal, createEffect } from 'solid-js'
 import { searchQuery, setSearchQuery, searchSuggestions, isLoadingSuggestions } from '../stores/searchStore'
-import { theme, themeClasses } from '../stores/themeStore'
+import { theme, effectiveTheme, themeClasses } from '../stores/themeStore'
 
 export const SearchBar: Component = () => {
   const [isFocused, setIsFocused] = createSignal(false)
@@ -83,7 +83,7 @@ export const SearchBar: Component = () => {
           <input
             type="text"
             placeholder={getPlaceholder()}
-            class={`w-full h-16 pl-12 pr-32 text-lg bg-transparent border-0 focus:outline-none focus:ring-0 ${theme() === 'light' ? 'placeholder-gray-500 text-gray-900' : 'placeholder-zinc-500 text-white'}`}
+            class={`w-full h-16 pl-12 pr-32 text-lg bg-transparent border-0 focus:outline-none focus:ring-0 ${effectiveTheme() === 'light' ? 'placeholder-gray-500 text-gray-900' : 'placeholder-zinc-500 text-white'}`}
             value={searchQuery()}
             onInput={(e) => setSearchQuery(e.currentTarget.value)}
             onFocus={() => setIsFocused(true)}
@@ -163,7 +163,7 @@ export const SearchBar: Component = () => {
                       class={`w-full p-3 text-xs rounded-lg border transition-all duration-200 text-left ${
                         searchMode() === mode.key
                           ? 'border-purple-500/50 bg-purple-500/10 text-purple-300'
-                          : `${themeClasses.borderSecondary()} ${theme() === 'light' ? 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-700' : 'bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-300'}`
+                          : `${themeClasses.borderSecondary()} ${effectiveTheme() === 'light' ? 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-700' : 'bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-300'}`
                       }`}
                       onClick={() => setSearchMode(mode.key as any)}
                     >
@@ -181,7 +181,7 @@ export const SearchBar: Component = () => {
               <div class="flex flex-wrap gap-2">
                 <For each={['PDF', 'DOC', 'TXT', 'IMG', 'VID', 'AUD']}>
                   {(type) => (
-                    <button class={`px-3 py-2 text-xs rounded-lg transition-colors border ${theme() === 'light' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-700 border-gray-300' : 'bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700/50 hover:text-zinc-200 border-zinc-700/50'}`}>
+                    <button class={`px-3 py-2 text-xs rounded-lg transition-colors border ${effectiveTheme() === 'light' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-700 border-gray-300' : 'bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700/50 hover:text-zinc-200 border-zinc-700/50'}`}>
                       {type}
                     </button>
                   )}
@@ -192,7 +192,7 @@ export const SearchBar: Component = () => {
             {/* Date Range */}
             <div>
               <label class={`block text-xs font-medium ${themeClasses.textSecondary()} mb-3`}>Time Range</label>
-              <select class={`w-full text-xs border rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 ${theme() === 'light' ? 'border-gray-300 bg-white text-gray-900' : 'border-zinc-700 bg-zinc-800/50 text-zinc-300'}`}>
+              <select class={`w-full text-xs border rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 ${effectiveTheme() === 'light' ? 'border-gray-300 bg-white text-gray-900' : 'border-zinc-700 bg-zinc-800/50 text-zinc-300'}`}>
                 <option>Any time</option>
                 <option>Last hour</option>
                 <option>Last 24 hours</option>
@@ -216,7 +216,7 @@ export const SearchBar: Component = () => {
                 'Has attachments'
               ]}>
                 {(filter) => (
-                  <button class={`px-3 py-2 text-xs rounded-full hover:bg-purple-500/20 hover:text-purple-300 transition-colors border hover:border-purple-500/30 ${theme() === 'light' ? 'bg-gray-100/50 text-gray-500 border-gray-200' : 'bg-zinc-800/30 text-zinc-400 border-zinc-700/30'}`}>
+                  <button class={`px-3 py-2 text-xs rounded-full hover:bg-purple-500/20 hover:text-purple-300 transition-colors border hover:border-purple-500/30 ${effectiveTheme() === 'light' ? 'bg-gray-100/50 text-gray-500 border-gray-200' : 'bg-zinc-800/30 text-zinc-400 border-zinc-700/30'}`}>
                     {filter}
                   </button>
                 )}
@@ -227,7 +227,7 @@ export const SearchBar: Component = () => {
       </Show>
       
       <Show when={isFocused() && (searchSuggestions().length > 0 || isLoadingSuggestions())}>
-        <div class={`absolute top-full left-0 right-0 mt-2 rounded-xl z-[9999] max-h-96 overflow-y-auto backdrop-blur-md animate-fadeIn border-2 ${theme() === 'light' ? 'bg-white border-gray-300 shadow-xl shadow-gray-200/50' : 'bg-zinc-900 border-zinc-600 shadow-xl shadow-black/20'}`}>
+        <div class={`absolute top-full left-0 right-0 mt-2 rounded-xl z-[9999] max-h-96 overflow-y-auto backdrop-blur-md animate-fadeIn border-2 ${effectiveTheme() === 'light' ? 'bg-white border-gray-300 shadow-xl shadow-gray-200/50' : 'bg-zinc-900 border-zinc-600 shadow-xl shadow-black/20'}`}>
           <Show when={isLoadingSuggestions()}>
             <div class={`px-4 py-4 text-sm ${themeClasses.textMuted()} flex items-center space-x-3`}>
               <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500"></div>
@@ -241,7 +241,7 @@ export const SearchBar: Component = () => {
                 class={`px-4 py-3 cursor-pointer transition-all duration-200 group ${
                   index() === selectedSuggestionIndex()
                     ? 'bg-gradient-to-r from-purple-500/10 to-blue-500/10 text-purple-300 shadow-sm border-l-2 border-purple-500'
-                    : `${theme() === 'light' ? 'hover:bg-gray-50 text-gray-700' : 'hover:bg-zinc-800/30 text-zinc-300'}`
+                    : `${effectiveTheme() === 'light' ? 'hover:bg-gray-50 text-gray-700' : 'hover:bg-zinc-800/30 text-zinc-300'}`
                 } ${index() === 0 ? 'rounded-t-xl' : ''} ${
                   index() === searchSuggestions().length - 1 ? 'rounded-b-xl' : ''
                 }`}
@@ -256,7 +256,7 @@ export const SearchBar: Component = () => {
                     <div class={`p-1.5 rounded-lg transition-all duration-200 ${
                       index() === selectedSuggestionIndex()
                         ? 'bg-purple-500/20 text-purple-300'
-                        : theme() === 'light' ? 'bg-gray-100 text-gray-500 group-hover:bg-gray-200 group-hover:text-gray-600' : 'bg-zinc-800/50 text-zinc-500 group-hover:bg-zinc-700/50 group-hover:text-zinc-400'
+                        : effectiveTheme() === 'light' ? 'bg-gray-100 text-gray-500 group-hover:bg-gray-200 group-hover:text-gray-600' : 'bg-zinc-800/50 text-zinc-500 group-hover:bg-zinc-700/50 group-hover:text-zinc-400'
                     }`}>
                       <svg
                         class="w-3.5 h-3.5"
@@ -296,7 +296,7 @@ export const SearchBar: Component = () => {
                       <span class={`text-xs px-2 py-1 rounded-full font-medium ${
                         index() === selectedSuggestionIndex()
                           ? 'bg-purple-500/20 text-purple-300'
-                          : theme() === 'light' ? 'bg-gray-100 text-gray-500' : 'bg-zinc-800/50 text-zinc-400'
+                          : effectiveTheme() === 'light' ? 'bg-gray-100 text-gray-500' : 'bg-zinc-800/50 text-zinc-400'
                       }`}>
                         {suggestion.count}
                       </span>
@@ -314,7 +314,7 @@ export const SearchBar: Component = () => {
                       class={`w-4 h-4 transition-all duration-200 ${
                         index() === selectedSuggestionIndex()
                           ? 'text-purple-400 transform translate-x-1'
-                          : theme() === 'light' ? 'text-gray-400 group-hover:text-gray-500' : 'text-zinc-600 group-hover:text-zinc-500'
+                          : effectiveTheme() === 'light' ? 'text-gray-400 group-hover:text-gray-500' : 'text-zinc-600 group-hover:text-zinc-500'
                       }`}
                       fill="none"
                       stroke="currentColor"

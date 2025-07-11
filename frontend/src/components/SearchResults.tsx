@@ -1,8 +1,9 @@
 import { Component, For, Show, createSignal } from 'solid-js'
 import { searchResults, isSearching, searchMetadata } from '../stores/searchStore'
 import type { SearchResult } from '../types/api'
-import { theme, themeClasses } from '../stores/themeStore'
+import { effectiveTheme, themeClasses } from '../stores/themeStore'
 import { searchAPI } from '../api'
+import { SearchResultsSkeleton } from './LoadingSkeleton'
 
 const FileTypeIcon: Component<{ fileType: string; filePath?: string }> = (props) => {
   const iconMap: Record<string, { icon: string; color: string; bgColor: string }> = {
@@ -36,21 +37,25 @@ const ResultCard: Component<{ result: SearchResult }> = (props) => {
 
   const handleOpenFile = async () => {
     try {
-      const result = await searchAPI.openFileInDefaultApp(props.result.file_path)
-      console.log('File opened:', result)
+      await searchAPI.openFileInDefaultApp(props.result.file_path)
     } catch (error) {
       console.error('Failed to open file:', error)
-      alert(`Failed to open file: ${error}`)
+      const errorMessage = String(error).includes('File not found') 
+        ? `File not found: ${props.result.file_path}\n\nThis file may have been moved or deleted.`
+        : `Failed to open file: ${error}`
+      alert(errorMessage)
     }
   }
 
   const handleShowInFolder = async () => {
     try {
-      const result = await searchAPI.showFileInFolder(props.result.file_path)
-      console.log('Showed in folder:', result)
+      await searchAPI.showFileInFolder(props.result.file_path)
     } catch (error) {
       console.error('Failed to show in folder:', error)
-      alert(`Failed to show in folder: ${error}`)
+      const errorMessage = String(error).includes('File not found') 
+        ? `File not found: ${props.result.file_path}\n\nThis file may have been moved or deleted.`
+        : `Failed to show in folder: ${error}`
+      alert(errorMessage)
     }
   }
   
@@ -97,7 +102,7 @@ const ResultCard: Component<{ result: SearchResult }> = (props) => {
   const fileType = getFileType(props.result.file_path)
   
   return (
-    <div class={`group ${themeClasses.card()} ${themeClasses.cardHover()} rounded-xl p-5 hover:shadow-2xl transition-all duration-300 relative overflow-hidden backdrop-blur-sm`}>
+    <div class={`group ${themeClasses.card()} ${themeClasses.cardHover()} rounded-xl p-5 hover:shadow-2xl transition-all duration-300 relative overflow-hidden backdrop-blur-sm animate-slideUp`}>
       {/* Background gradient on hover */}
       <div class="absolute inset-0 bg-gradient-to-r from-purple-500/0 via-purple-500/5 to-blue-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       
@@ -144,7 +149,7 @@ const ResultCard: Component<{ result: SearchResult }> = (props) => {
           
           {/* Content Preview */}
           <div class="mb-4">
-            <div class={`rounded-lg p-4 border ${theme() === 'light' ? 'bg-gray-50/80 border-gray-200' : 'bg-black/50 border-zinc-800/50'}`}>
+            <div class={`rounded-lg p-4 border ${effectiveTheme() === 'light' ? 'bg-gray-50/80 border-gray-200' : 'bg-black/50 border-zinc-800/50'}`}>
               <div 
                 class={`${themeClasses.textSecondary()} text-sm leading-relaxed ${isExpanded() ? '' : 'line-clamp-3'}`}
                 innerHTML={props.result.highlighted_content || props.result.content}
@@ -168,7 +173,7 @@ const ResultCard: Component<{ result: SearchResult }> = (props) => {
               <div class="flex items-center space-x-2">
                 <span class={`text-xs ${themeClasses.textMuted()}`}>Relevance:</span>
                 <div class="flex items-center space-x-2">
-                  <div class={`w-20 rounded-full h-2 ${theme() === 'light' ? 'bg-gray-200' : 'bg-zinc-800'}`}>
+                  <div class={`w-20 rounded-full h-2 ${effectiveTheme() === 'light' ? 'bg-gray-200' : 'bg-zinc-800'}`}>
                     <div
                       class={`h-2 rounded-full transition-all duration-500 ${
                         props.result.score > 0.8 ? 'bg-green-400' :
@@ -196,24 +201,20 @@ const ResultCard: Component<{ result: SearchResult }> = (props) => {
             </div>
             
             {/* Action Buttons */}
-            <div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
+            <div class="flex items-center space-x-2">
               <button 
-                class={`p-2 ${themeClasses.textMuted()} hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-all duration-200`}
+                class="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
                 title="Open file"
                 onClick={handleOpenFile}
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
+                Open
               </button>
               <button 
-                class={`p-2 ${themeClasses.textMuted()} hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-all duration-200`}
+                class="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600"
                 title="Show in folder"
                 onClick={handleShowInFolder}
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-                </svg>
+                Show
               </button>
               <Show when={isImageFile(fileType)}>
                 <button 
@@ -234,7 +235,7 @@ const ResultCard: Component<{ result: SearchResult }> = (props) => {
       
       {/* Image Preview Modal */}
       <Show when={showPreview() && isImageFile(fileType)}>
-        <div class={`fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 ${theme() === 'light' ? 'bg-white/90' : 'bg-black/90'}`}
+        <div class={`fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 ${effectiveTheme() === 'light' ? 'bg-white/90' : 'bg-black/90'}`}
              onClick={() => setShowPreview(false)}>
           <div class={`${themeClasses.card()} rounded-xl p-6 max-w-4xl max-h-[85vh] overflow-auto shadow-2xl`}>
             <div class="flex items-center justify-between mb-6">
@@ -262,25 +263,17 @@ const ResultCard: Component<{ result: SearchResult }> = (props) => {
 
 export const SearchResults: Component = () => {
   return (
-    <div class={`flex-1 overflow-y-auto ${themeClasses.bg()}`}>
+    <div class={`flex-1 overflow-y-auto custom-scrollbar ${themeClasses.bg()}`}>
       <Show
         when={!isSearching()}
-        fallback={
-          <div class="flex items-center justify-center h-64">
-            <div class="text-center">
-              <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto"></div>
-              <p class={`mt-4 ${themeClasses.textMuted()}`}>Searching your documents...</p>
-              <p class={`text-sm ${themeClasses.textSubtle()} mt-1`}>Using AI to find the best matches</p>
-            </div>
-          </div>
-        }
+        fallback={<SearchResultsSkeleton />}
       >
         <Show
           when={searchResults().length > 0}
           fallback={
             <div class="flex items-center justify-center h-64">
               <div class="text-center">
-                <div class={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 ${theme() === 'light' ? 'bg-gray-100' : 'bg-zinc-900'}`}>
+                <div class={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 ${effectiveTheme() === 'light' ? 'bg-gray-100' : 'bg-zinc-900'}`}>
                   <svg class={`w-8 h-8 ${themeClasses.textMuted()}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
@@ -313,7 +306,7 @@ export const SearchResults: Component = () => {
               </div>
               
               <div class="flex items-center space-x-3">
-                <select class={`text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 ${theme() === 'light' ? 'border-gray-300 bg-white text-gray-900' : 'border-zinc-700 bg-zinc-900 text-zinc-300'}`}>
+                <select class={`text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 ${effectiveTheme() === 'light' ? 'border-gray-300 bg-white text-gray-900' : 'border-zinc-700 bg-zinc-900 text-zinc-300'}`}>
                   <option>Relevance</option>
                   <option>Date (Newest)</option>
                   <option>Date (Oldest)</option>
@@ -324,7 +317,14 @@ export const SearchResults: Component = () => {
             
             <div class="space-y-4">
               <For each={searchResults()}>
-                {(result) => <ResultCard result={result} />}
+                {(result, index) => (
+                  <div 
+                    class="animate-slideUp" 
+                    style={{ 'animation-delay': `${index() * 0.1}s` }}
+                  >
+                    <ResultCard result={result} />
+                  </div>
+                )}
               </For>
             </div>
           </div>

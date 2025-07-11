@@ -965,7 +965,7 @@ impl ResultProcessor {
         let mut highlighted = text.to_string();
         
         for term in query_terms {
-            let term_lower = term.to_lowercase();
+            let _term_lower = term.to_lowercase();
             let pattern = regex::Regex::new(&format!(r"(?i)\b{}\b", regex::escape(term))).unwrap();
             highlighted = pattern.replace_all(&highlighted, |caps: &regex::Captures| {
                 format!("<mark>{}</mark>", &caps[0])

@@ -42,6 +42,73 @@ export const IndexingPanel: Component = () => {
     }
   }
 
+  // Cleanup missing files
+  const cleanupMissingFiles = async () => {
+    const confirmed = confirm('Remove all database entries for files that no longer exist on the filesystem?\n\nThis will:\n- Check all indexed files\n- Remove entries for missing files\n- Rebuild the search index\n\nThis action cannot be undone.')
+    
+    if (!confirmed) return
+
+    try {
+      setIsIndexing(true)
+      const result = await api.cleanupMissingFiles()
+      
+      const message = `Cleanup completed:\n\n` +
+        `• Checked ${result.checked_files} files\n` +
+        `• Removed ${result.removed_documents} missing documents\n` +
+        `• Removed ${result.removed_chunks} orphaned chunks\n\n` +
+        `Search index has been rebuilt.`
+      
+      alert(message)
+      await checkIndexingStatus() // Refresh status
+    } catch (error) {
+      console.error('Cleanup error:', error)
+      setLastError(`Cleanup failed: ${error}`)
+      alert(`Cleanup failed: ${error}`)
+    } finally {
+      setIsIndexing(false)
+    }
+  }
+
+  // Reset entire database
+  const resetDatabase = async () => {
+    console.log('🔥 Reset database button clicked!')
+    
+    const confirmed = confirm('⚠️ DANGER: Reset entire database?\n\nThis will:\n- Delete ALL indexed documents\n- Delete ALL text chunks\n- Delete ALL search indices\n- Clear ALL cached data\n\nYou will need to re-index all your files.\n\nThis action CANNOT be undone!')
+    
+    if (!confirmed) {
+      console.log('🔥 Reset cancelled by user (first confirm)')
+      return
+    }
+
+    const doubleConfirm = confirm('Are you absolutely sure?\n\nClick OK to proceed.')
+    if (!doubleConfirm) {
+      console.log('🔥 Reset cancelled by user (second confirm)')
+      return
+    }
+
+    console.log('🔥 User confirmed reset, proceeding...')
+    try {
+      setIsIndexing(true)
+      console.log('🔥 Calling api.resetDatabase()...')
+      const result = await api.resetDatabase()
+      console.log('🔥 Reset result:', result)
+      
+      const message = `Database reset completed:\n\n` +
+        `• Removed ${result.removed_documents} documents\n` +
+        `• Removed ${result.removed_chunks} chunks\n\n` +
+        `You can now re-index your files.`
+      
+      alert(message)
+      await checkIndexingStatus() // Refresh status
+    } catch (error) {
+      console.error('🔥 Reset error:', error)
+      setLastError(`Reset failed: ${error}`)
+      alert(`Reset failed: ${error}`)
+    } finally {
+      setIsIndexing(false)
+    }
+  }
+
   // Poll for indexing status
   const checkIndexingStatus = async () => {
     try {
@@ -182,6 +249,28 @@ export const IndexingPanel: Component = () => {
               </div>
               <div class={`text-xs ${themeClasses.textMuted()}`}>Files/sec</div>
             </div>
+            <Show when={indexingStats()?.documents_with_ocr || indexingStats()?.pending_ocr}>
+              <div>
+                <div class={`text-2xl font-bold ${themeClasses.text()}`}>
+                  {indexingStats()?.documents_with_ocr || 0}
+                  <Show when={indexingStats()?.pending_ocr}>
+                    <span class={`text-sm ${themeClasses.textMuted()}`}>/{indexingStats()?.pending_ocr}</span>
+                  </Show>
+                </div>
+                <div class={`text-xs ${themeClasses.textMuted()}`}>OCR Docs</div>
+              </div>
+            </Show>
+            <Show when={indexingStats()?.documents_with_transcription || indexingStats()?.pending_transcription}>
+              <div>
+                <div class={`text-2xl font-bold ${themeClasses.text()}`}>
+                  {indexingStats()?.documents_with_transcription || 0}
+                  <Show when={indexingStats()?.pending_transcription}>
+                    <span class={`text-sm ${themeClasses.textMuted()}`}>/{indexingStats()?.pending_transcription}</span>
+                  </Show>
+                </div>
+                <div class={`text-xs ${themeClasses.textMuted()}`}>Audio Docs</div>
+              </div>
+            </Show>
           </div>
         </div>
       </Show>
@@ -208,6 +297,14 @@ export const IndexingPanel: Component = () => {
           <Show when={indexingStatus()?.current_file}>
             <div class={`text-xs ${themeClasses.textMuted()} mt-2 truncate`}>
               {indexingStatus()?.current_file}
+            </div>
+          </Show>
+          <Show when={indexingStatus()?.multimedia_processing_status}>
+            <div class={`text-xs ${theme() === 'light' ? 'text-orange-600' : 'text-orange-400'} mt-2 flex items-center`}>
+              <svg class="w-4 h-4 mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {indexingStatus()?.multimedia_processing_status}
             </div>
           </Show>
         </div>
@@ -316,6 +413,27 @@ export const IndexingPanel: Component = () => {
             onClick={rebuildFtsIndex}
           >
             🔧 Rebuild Search Index
+          </button>
+
+          <button
+            class={`px-3 py-2 text-sm rounded-lg font-medium transition-colors border-2 border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white ${themeClasses.hover()}`}
+            onClick={cleanupMissingFiles}
+            disabled={isIndexing()}
+          >
+            🧹 Cleanup Missing Files
+          </button>
+
+          <button
+            class={`px-3 py-2 text-sm rounded-lg font-medium transition-colors border-2 border-red-600 text-red-600 hover:bg-red-600 hover:text-white ${themeClasses.hover()}`}
+            onClick={(e) => {
+              console.log('🔥 Reset Database button click event fired!', e)
+              e.preventDefault()
+              e.stopPropagation()
+              resetDatabase()
+            }}
+            disabled={isIndexing()}
+          >
+            🔥 Reset Database
           </button>
         </div>
       </div>

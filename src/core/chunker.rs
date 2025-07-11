@@ -173,35 +173,43 @@ impl TextChunker {
     fn chunk_by_characters(&self, text: &str) -> Result<Vec<TextChunk>> {
         let mut chunks = Vec::new();
         let mut chunk_index = 0;
-        let mut start = 0;
+        let chars: Vec<char> = text.chars().collect();
+        let mut start_char = 0;
         
-        while start < text.len() {
-            let mut end = (start + self.options.target_chunk_size).min(text.len());
+        while start_char < chars.len() {
+            let mut end_char = (start_char + self.options.target_chunk_size).min(chars.len());
             
             // Try to find a good break point (space, punctuation)
-            if end < text.len() {
-                let break_search_start = (end - 100).max(start);
-                if let Some(break_pos) = self.find_break_point(&text[break_search_start..end]) {
-                    end = break_search_start + break_pos;
+            if end_char < chars.len() {
+                let break_search_start = end_char.saturating_sub(100);
+                let search_range: String = chars[break_search_start..end_char].iter().collect();
+                
+                if let Some(break_pos) = self.find_break_point(&search_range) {
+                    // find_break_point returns character position within search_range
+                    end_char = break_search_start + break_pos;
                 }
             }
             
-            let chunk_text = text[start..end].to_string();
+            let chunk_text: String = chars[start_char..end_char].iter().collect();
             let overlap_start = chunk_index > 0;
-            let overlap_end = end < text.len();
+            let overlap_end = end_char < chars.len();
+            
+            // Calculate byte positions for the chunk
+            let start_byte = chars[0..start_char].iter().map(|c| c.len_utf8()).sum::<usize>();
+            let end_byte = chars[0..end_char].iter().map(|c| c.len_utf8()).sum::<usize>();
             
             chunks.push(self.create_chunk(
                 chunk_text,
-                start,
-                end,
+                start_byte,
+                end_byte,
                 chunk_index,
                 overlap_start,
                 overlap_end,
             ));
             
             // Calculate next start with overlap
-            let overlap_size = ((end - start) as f32 * self.options.overlap_percentage) as usize;
-            start = end.saturating_sub(overlap_size);
+            let overlap_chars = ((end_char - start_char) as f32 * self.options.overlap_percentage) as usize;
+            start_char = end_char.saturating_sub(overlap_chars);
             chunk_index += 1;
         }
         
@@ -232,18 +240,24 @@ impl TextChunker {
     }
     
     fn calculate_overlap(&self, chunk: &str) -> String {
-        let overlap_chars = (chunk.len() as f32 * self.options.overlap_percentage) as usize;
-        if overlap_chars == 0 || chunk.len() <= overlap_chars {
+        let overlap_chars = (chunk.chars().count() as f32 * self.options.overlap_percentage) as usize;
+        if overlap_chars == 0 || chunk.chars().count() <= overlap_chars {
             return String::new();
         }
         
-        let start_pos = chunk.len() - overlap_chars;
+        // Use character-based indexing instead of byte-based
+        let total_chars = chunk.chars().count();
+        let start_char_pos = total_chars.saturating_sub(overlap_chars);
+        
+        // Convert to a character iterator and collect the overlap portion
+        let overlap_text: String = chunk.chars().skip(start_char_pos).collect();
         
         // Try to start overlap at a word boundary
-        if let Some(word_start) = chunk[start_pos..].find(' ') {
-            chunk[start_pos + word_start..].trim().to_string()
+        if let Some(word_start) = overlap_text.find(' ') {
+            // find() returns byte position, which is safe for slicing
+            overlap_text[word_start..].trim().to_string()
         } else {
-            chunk[start_pos..].to_string()
+            overlap_text.trim().to_string()
         }
     }
     

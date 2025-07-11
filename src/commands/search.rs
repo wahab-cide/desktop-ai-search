@@ -256,38 +256,12 @@ pub async fn rebuild_search_index(
     println!("🔧 Rebuilding search index...");
     
     let database = database.inner();
-    let conn = database.get_connection()
-        .map_err(|e| format!("Failed to get database connection: {}", e))?;
     
-    println!("🔧 Rebuilding FTS5 index...");
+    // Use the new rebuild_fts_index method
+    let rows_affected = database.rebuild_fts_index()
+        .map_err(|e| format!("Failed to rebuild FTS index: {}", e))?;
     
-    // First, clear the FTS index
-    conn.execute("DELETE FROM chunks_fts", [])
-        .map_err(|e| format!("Failed to clear FTS index: {}", e))?;
-    
-    // Then repopulate from document_chunks
-    conn.execute(
-        "INSERT INTO chunks_fts(rowid, content, document_id, chunk_id)
-         SELECT rowid, content, document_id, id FROM document_chunks",
-        []
-    ).map_err(|e| format!("Failed to repopulate FTS index: {}", e))?;
-    
-    let count: i32 = conn.query_row(
-        "SELECT COUNT(*) FROM document_chunks",
-        [],
-        |row| row.get(0)
-    ).map_err(|e| format!("Failed to count chunks: {}", e))?;
-    
-    println!("✅ FTS5 index rebuilt with {} entries", count);
-    
-    // Test the rebuilt index
-    let test_count: i32 = conn.query_row(
-        "SELECT COUNT(*) FROM chunks_fts WHERE chunks_fts MATCH 'the OR a OR of'",
-        [],
-        |row| row.get(0)
-    ).map_err(|e| format!("Failed to test rebuilt index: {}", e))?;
-    
-    let message = format!("✅ Search index rebuilt successfully. Test query found {} matches.", test_count);
+    let message = format!("✅ Search index rebuilt successfully with {} entries.", rows_affected);
     println!("{}", message);
     
     Ok(message)

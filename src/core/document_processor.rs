@@ -37,7 +37,7 @@ impl Default for ProcessingOptions {
     fn default() -> Self {
         Self {
             chunking_options: ChunkingOptions::default(),
-            max_concurrent_documents: 4,
+            max_concurrent_documents: 12, // Increased from 4 for better performance
             skip_empty_documents: true,
             min_content_length: 50,
             extract_metadata: true,
@@ -93,6 +93,12 @@ impl DocumentProcessor {
         embedding_manager.load_model(model_id, Some(EmbeddingConfig::default())).await?;
         
         self.embedding_manager = Some(Arc::new(tokio::sync::Mutex::new(embedding_manager)));
+        Ok(())
+    }
+    
+    /// Set the embedding manager instance directly (for performance optimization)
+    pub async fn set_embedding_manager_instance(&mut self, embedding_manager: Arc<tokio::sync::Mutex<EmbeddingManager>>) -> Result<()> {
+        self.embedding_manager = Some(embedding_manager);
         Ok(())
     }
     
@@ -182,6 +188,10 @@ impl DocumentProcessor {
         let mut documents_requiring_transcription = 0;
         let mut processing_errors = 0;
         let start_time = std::time::Instant::now();
+        
+        // Tiered processing strategy: sort by file size for optimal throughput
+        let mut documents = documents;
+        documents.sort_by_key(|doc| doc.file_size);
         
         for document in documents {
             // Send progress update
@@ -482,7 +492,7 @@ impl DocumentProcessor {
         stats
     }
     
-    /// Generate embeddings for text chunks
+    /// Generate embeddings for text chunks with optimized batching
     async fn generate_chunk_embeddings(
         &self,
         mut chunks: Vec<TextChunk>,
@@ -492,21 +502,33 @@ impl DocumentProcessor {
             return Ok(chunks);
         }
         
-        // Extract text content from all chunks
-        let chunk_texts: Vec<String> = chunks.iter()
-            .map(|chunk| chunk.content.clone())
-            .collect();
+        // Process chunks in smaller batches for better memory management and parallelization
+        const BATCH_SIZE: usize = 32; // Optimal batch size for embedding generation
         
-        // Generate embeddings for all chunks at once (batch processing)
-        let manager = embedding_manager.lock().await;
-        let embeddings = manager.generate_embeddings(&chunk_texts).await
-            .map_err(|e| AppError::Indexing(IndexingError::Embedding(
-                format!("Failed to generate embeddings: {}", e)
-            )))?;
-        drop(manager); // Release the lock early
+        let mut all_embeddings = Vec::with_capacity(chunks.len());
+        
+        for chunk_batch in chunks.chunks(BATCH_SIZE) {
+            // Extract text content from chunk batch
+            let chunk_texts: Vec<String> = chunk_batch.iter()
+                .map(|chunk| chunk.content.clone())
+                .collect();
+            
+            // Generate embeddings for batch (lock held for minimal time)
+            let manager = embedding_manager.lock().await;
+            let batch_embeddings = manager.generate_embeddings(&chunk_texts).await
+                .map_err(|e| AppError::Indexing(IndexingError::Embedding(
+                    format!("Failed to generate embeddings: {}", e)
+                )))?;
+            drop(manager); // Release the lock immediately
+            
+            all_embeddings.extend(batch_embeddings);
+            
+            // Small delay to allow other tasks to acquire the lock
+            tokio::task::yield_now().await;
+        }
         
         // Assign embeddings to chunks
-        for (chunk, embedding) in chunks.iter_mut().zip(embeddings.into_iter()) {
+        for (chunk, embedding) in chunks.iter_mut().zip(all_embeddings.into_iter()) {
             chunk.embedding = Some(embedding);
         }
         

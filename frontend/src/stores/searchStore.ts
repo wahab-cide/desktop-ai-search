@@ -62,6 +62,45 @@ export const fileSizes = [
 // Debounced search function
 let searchTimeout: number | null = null
 export const performSearch = async (query: string, currentFilters: SearchFilters) => {
+  // If we have file type filters but no query, browse by file type
+  if (!query.trim() && currentFilters.fileTypes.length > 0) {
+    setIsSearching(true)
+    try {
+      const results = []
+      const startTime = Date.now()
+      
+      // Browse each selected file type
+      for (const fileType of currentFilters.fileTypes) {
+        const response = await api.browseFilesByType(fileType, 50)
+        if (response.results) {
+          results.push(...response.results)
+        }
+      }
+      
+      const endTime = Date.now()
+      
+      batch(() => {
+        setSearchResults(results)
+        setSearchMetadata({
+          totalResults: results.length,
+          searchTime: (endTime - startTime) / 1000,
+          queryIntent: `Browsing ${currentFilters.fileTypes.join(', ')} files`,
+          suggestedQuery: undefined
+        })
+      })
+    } catch (error) {
+      console.error('Browse failed:', error)
+      batch(() => {
+        setSearchResults([])
+        setSearchMetadata(null)
+      })
+    } finally {
+      setIsSearching(false)
+    }
+    return
+  }
+  
+  // Clear results if no query and no filters
   if (!query.trim() && currentFilters.fileTypes.length === 0) {
     batch(() => {
       setSearchResults([])
@@ -70,6 +109,7 @@ export const performSearch = async (query: string, currentFilters: SearchFilters
     return
   }
   
+  // Regular search with query
   setIsSearching(true)
   try {
     const startTime = Date.now()
@@ -122,9 +162,19 @@ createEffect(() => {
   const currentFilters = filters()
   
   if (searchTimeout) clearTimeout(searchTimeout)
-  searchTimeout = window.setTimeout(() => {
-    performSearch(query, currentFilters)
-  }, 300)
+  
+  // Trigger search if we have a query OR file type filters
+  if (query.trim() || currentFilters.fileTypes.length > 0) {
+    searchTimeout = window.setTimeout(() => {
+      performSearch(query, currentFilters)
+    }, 300)
+  } else {
+    // Clear results if no query and no filters
+    batch(() => {
+      setSearchResults([])
+      setSearchMetadata(null)
+    })
+  }
 })
 
 // Auto-suggestions with debouncing

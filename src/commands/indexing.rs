@@ -150,7 +150,7 @@ pub async fn index_directory(
     let database = database.inner().clone();
     
     let processing_options = ProcessingOptions {
-        max_concurrent_documents: 4,
+        max_concurrent_documents: 12, // Increased from 4 for better performance
         extract_metadata: true,
         skip_empty_documents: true,
         min_content_length: 50,
@@ -340,7 +340,7 @@ pub async fn index_directory(
             if let Err(e) = conn.execute("DELETE FROM chunks_fts", []) {
                 eprintln!("⚠️ Failed to clear FTS index: {}", e);
             } else if let Err(e) = conn.execute(
-                "INSERT INTO chunks_fts(rowid, content, document_id, chunk_id)
+                "INSERT INTO chunks_fts(rowid, content, document_id, id)
                  SELECT rowid, content, document_id, id FROM document_chunks",
                 []
             ) {
@@ -396,7 +396,7 @@ pub async fn index_directory_incremental(
     
     // Process only changed files
     let processing_options = ProcessingOptions {
-        max_concurrent_documents: 4,
+        max_concurrent_documents: 12, // Increased from 4 for better performance
         extract_metadata: true,
         skip_empty_documents: true,
         min_content_length: 50,
@@ -609,4 +609,128 @@ pub async fn start_background_indexing() -> Result<(), String> {
     // For now, just return success
     // TODO: Implement proper background indexing
     Ok(())
+}
+
+/// Clean up database by removing entries for files that no longer exist
+#[tauri::command]
+pub async fn cleanup_missing_files(
+    database: tauri::State<'_, Arc<Database>>
+) -> Result<HashMap<String, u32>, String> {
+    println!("🧹 Starting database cleanup for missing files...");
+    
+    let database = database.inner();
+    let mut cleanup_stats = HashMap::new();
+    let mut removed_documents = 0u32;
+    let mut removed_chunks = 0u32;
+    let mut checked_files = 0u32;
+    
+    // Get all documents from database
+    let documents = database.get_all_documents()
+        .map_err(|e| format!("Failed to get documents: {}", e))?;
+    
+    let mut missing_file_ids = Vec::new();
+    
+    // Check each document's file path
+    for doc in documents {
+        checked_files += 1;
+        let path = Path::new(&doc.file_path);
+        
+        if !path.exists() {
+            println!("🗑️  Missing file: {}", doc.file_path);
+            missing_file_ids.push(doc.id);
+            removed_documents += 1;
+        }
+        
+        // Progress indicator for large databases
+        if checked_files % 100 == 0 {
+            println!("📊 Checked {} files...", checked_files);
+        }
+    }
+    
+    // Remove documents and their chunks
+    for doc_id in missing_file_ids {
+        // Remove chunks first (due to foreign key constraints)
+        let chunks_removed = database.delete_chunks_by_document_id(&doc_id)
+            .map_err(|e| format!("Failed to delete chunks: {}", e))?;
+        removed_chunks += chunks_removed;
+        
+        // Remove document
+        database.delete_document(&doc_id)
+            .map_err(|e| format!("Failed to delete document: {}", e))?;
+    }
+    
+    // Rebuild FTS index after cleanup
+    if removed_documents > 0 {
+        println!("🔄 Rebuilding FTS search index after cleanup...");
+        match database.get_connection() {
+            Ok(conn) => {
+                if let Err(e) = conn.execute("DELETE FROM chunks_fts", []) {
+                    eprintln!("⚠️ Failed to clear FTS index: {}", e);
+                } else if let Err(e) = conn.execute(
+                    "INSERT INTO chunks_fts(rowid, content, document_id, id)
+                     SELECT rowid, content, document_id, id FROM document_chunks",
+                    []
+                ) {
+                    eprintln!("⚠️ Failed to rebuild FTS index: {}", e);
+                } else {
+                    println!("✅ FTS search index rebuilt successfully");
+                }
+            }
+            Err(e) => eprintln!("⚠️ Failed to get database connection for FTS rebuild: {}", e),
+        }
+    }
+    
+    cleanup_stats.insert("checked_files".to_string(), checked_files);
+    cleanup_stats.insert("removed_documents".to_string(), removed_documents);
+    cleanup_stats.insert("removed_chunks".to_string(), removed_chunks);
+    
+    println!("✅ Cleanup completed: {} files checked, {} documents removed, {} chunks removed", 
+             checked_files, removed_documents, removed_chunks);
+    
+    Ok(cleanup_stats)
+}
+
+/// Reset entire database (delete all indexed content)
+#[tauri::command]
+pub async fn reset_database(
+    database: tauri::State<'_, Arc<Database>>
+) -> Result<HashMap<String, u32>, String> {
+    println!("🔥 Resetting entire database...");
+    
+    let database = database.inner();
+    let mut reset_stats = HashMap::new();
+    
+    // Get counts before reset
+    let documents_count = database.get_total_document_count()
+        .map_err(|e| format!("Failed to get document count: {}", e))?;
+    let chunks_count = database.get_total_chunk_count().await
+        .map_err(|e| format!("Failed to get chunk count: {}", e))?;
+    
+    // Clear all tables
+    match database.get_connection() {
+        Ok(conn) => {
+            // Delete in order due to foreign key constraints
+            conn.execute("DELETE FROM chunks_fts", [])
+                .map_err(|e| format!("Failed to clear FTS index: {}", e))?;
+            
+            conn.execute("DELETE FROM document_chunks", [])
+                .map_err(|e| format!("Failed to clear chunks: {}", e))?;
+            
+            conn.execute("DELETE FROM documents", [])
+                .map_err(|e| format!("Failed to clear documents: {}", e))?;
+            
+            // Reset auto-increment sequences if needed
+            conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('documents', 'document_chunks')", [])
+                .map_err(|e| format!("Failed to reset sequences: {}", e))?;
+        }
+        Err(e) => return Err(format!("Failed to get database connection: {}", e)),
+    }
+    
+    reset_stats.insert("removed_documents".to_string(), documents_count as u32);
+    reset_stats.insert("removed_chunks".to_string(), chunks_count as u32);
+    
+    println!("✅ Database reset completed: {} documents and {} chunks removed", 
+             documents_count, chunks_count);
+    
+    Ok(reset_stats)
 }

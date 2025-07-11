@@ -100,10 +100,33 @@ pub async fn search(
         _ => SearchMode::Balanced,
     };
     
-    // Perform search with mode
-    search_engine.set_mode(search_mode);
-    let results = search_engine.search(&query).await
-        .map_err(|e| format!("Search failed: {}", e))?;
+    // Handle case where no query is provided but file type filters are applied
+    let results = if query.trim().is_empty() && !filters.file_types.is_empty() {
+        // Browse by file type - get all documents of the specified types
+        let mut all_documents = Vec::new();
+        for file_type in &filters.file_types {
+            let documents = database.get_documents_by_file_type(file_type, Some(50))
+                .map_err(|e| format!("Failed to get documents by type: {}", e))?;
+            all_documents.extend(documents);
+        }
+        
+        // Convert documents to search results format
+        all_documents.into_iter().enumerate().map(|(idx, doc)| {
+            crate::core::hybrid_search::SearchResult {
+                chunk_id: format!("browse_{}", idx),
+                document_id: doc.id,
+                content: format!("File: {}", doc.file_path.split('/').last().unwrap_or(&doc.file_path)),
+                relevance_score: 1.0, // All results are equally relevant when browsing
+                source: crate::core::hybrid_search::SearchResultSource::FullTextSearch,
+                highlighted_content: None,
+            }
+        }).collect()
+    } else {
+        // Perform normal search with mode
+        search_engine.set_mode(search_mode);
+        search_engine.search(&query).await
+            .map_err(|e| format!("Search failed: {}", e))?
+    };
     
     // Convert results to frontend format
     let mut frontend_results = Vec::new();
@@ -261,17 +284,59 @@ pub async fn get_search_suggestions_v2(
 pub async fn get_file_type_counts(
     database: tauri::State<'_, Arc<Database>>
 ) -> std::result::Result<HashMap<String, usize>, String> {
-    // For now, return empty counts since the method doesn't exist
-    // TODO: Implement proper file type statistics in database
-    let mut counts = HashMap::new();
-    counts.insert("pdf".to_string(), 0);
-    counts.insert("docx".to_string(), 0);
-    counts.insert("txt".to_string(), 0);
-    counts.insert("md".to_string(), 0);
-    counts.insert("email".to_string(), 0);
-    counts.insert("image".to_string(), 0);
-    counts.insert("audio".to_string(), 0);
-    counts.insert("video".to_string(), 0);
+    let database = database.inner().clone();
     
-    Ok(counts)
+    database.get_file_type_counts()
+        .map_err(|e| format!("Failed to get file type counts: {}", e))
+}
+
+#[tauri::command]
+pub async fn browse_files_by_type(
+    database: tauri::State<'_, Arc<Database>>,
+    file_type: String,
+    limit: Option<usize>
+) -> std::result::Result<SearchResponseV2, String> {
+    let database = database.inner().clone();
+    
+    // Get documents of the specified type
+    let documents = database.get_documents_by_file_type(&file_type, limit)
+        .map_err(|e| format!("Failed to browse files by type: {}", e))?;
+    
+    // Convert documents to search results format
+    let frontend_results: Vec<SearchResultV2> = documents.into_iter().enumerate().map(|(idx, doc)| {
+        SearchResultV2 {
+            id: format!("browse_{}", idx),
+            file_path: doc.file_path.clone(),
+            content: format!("File: {}", doc.file_path.split('/').last().unwrap_or(&doc.file_path)),
+            highlighted_content: None,
+            score: 1.0, // All results are equally relevant when browsing
+            match_type: "browse".to_string(),
+            file_type: Some(match doc.file_type {
+                crate::models::FileType::Pdf => "pdf".to_string(),
+                crate::models::FileType::Docx => "docx".to_string(),
+                crate::models::FileType::Text => "txt".to_string(),
+                crate::models::FileType::Markdown => "md".to_string(),
+                crate::models::FileType::Email => "email".to_string(),
+                crate::models::FileType::Image => {
+                    // Get actual extension for images
+                    doc.file_path.split('.').last().unwrap_or("image").to_lowercase()
+                },
+                crate::models::FileType::Audio => "mp3".to_string(),
+                crate::models::FileType::Video => "mp4".to_string(),
+                _ => "unknown".to_string(),
+            }),
+            file_size: Some(doc.file_size as i64),
+            modified_date: Some(doc.modification_date.to_rfc3339()),
+            created_date: Some(doc.creation_date.to_rfc3339()),
+            author: doc.metadata.get("author").cloned(),
+            tags: doc.metadata.get("tags").and_then(|t| serde_json::from_str(t).ok()),
+        }
+    }).collect();
+    
+    Ok(SearchResponseV2 {
+        total: frontend_results.len(),
+        results: frontend_results,
+        query_intent: Some(format!("Browsing {} files", file_type)),
+        suggested_query: None,
+    })
 }

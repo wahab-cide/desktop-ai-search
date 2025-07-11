@@ -299,7 +299,7 @@ impl IntelligentQueryProcessor {
     }
 
     /// Enhance boolean query with natural language understanding
-    fn enhance_boolean_with_intent(&self, boolean_query: &BooleanParsedQuery, intent: &QueryIntent) -> Result<BooleanParsedQuery> {
+    fn enhance_boolean_with_intent(&self, boolean_query: &BooleanParsedQuery, _intent: &QueryIntent) -> Result<BooleanParsedQuery> {
         // This would enhance the boolean query tree with insights from NL understanding
         // For now, return the original query
         Ok(boolean_query.clone())
@@ -330,7 +330,7 @@ impl IntelligentQueryProcessor {
         &self,
         query: &str,
         intent: &QueryIntent,
-        strategy: &QueryProcessingStrategy,
+        _strategy: &QueryProcessingStrategy,
         execution_result: Option<&QueryExecutionResult>,
     ) -> Vec<QueryRefinement> {
         let mut suggestions = Vec::new();

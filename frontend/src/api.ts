@@ -48,6 +48,19 @@ export const searchAPI = {
     }
   },
 
+  async browseFilesByType(fileType: string, limit: number = 50): Promise<SearchResponse> {
+    try {
+      const response = await invoke<any>('browse_files_by_type', {
+        file_type: fileType,
+        limit
+      })
+      return response
+    } catch (error) {
+      console.error('Browse files error:', error)
+      return { results: [], total: 0 }
+    }
+  },
+
   async search(query: string, filters: SearchFilters): Promise<SearchResponse> {
     try {
       // Use the basic search command first (more stable)
@@ -165,7 +178,7 @@ export const searchAPI = {
 
   async openFileInDefaultApp(filePath: string): Promise<string> {
     try {
-      const result = await invoke<string>('open_file_in_default_app', { filePath })
+      const result = await invoke<string>('open_file_in_default_app', { file_path: filePath })
       return result
     } catch (error) {
       console.error('Open file error:', error)
@@ -175,10 +188,31 @@ export const searchAPI = {
 
   async showFileInFolder(filePath: string): Promise<string> {
     try {
-      const result = await invoke<string>('show_file_in_folder', { filePath })
+      const result = await invoke<string>('show_file_in_folder', { file_path: filePath })
       return result
     } catch (error) {
       console.error('Show file in folder error:', error)
+      throw error
+    }
+  },
+
+  // Database cleanup functions
+  async cleanupMissingFiles(): Promise<{ checked_files: number, removed_documents: number, removed_chunks: number }> {
+    try {
+      const result = await invoke<{ checked_files: number, removed_documents: number, removed_chunks: number }>('cleanup_missing_files')
+      return result
+    } catch (error) {
+      console.error('Cleanup missing files error:', error)
+      throw error
+    }
+  },
+
+  async resetDatabase(): Promise<{ removed_documents: number, removed_chunks: number }> {
+    try {
+      const result = await invoke<{ removed_documents: number, removed_chunks: number }>('reset_database')
+      return result
+    } catch (error) {
+      console.error('Reset database error:', error)
       throw error
     }
   }

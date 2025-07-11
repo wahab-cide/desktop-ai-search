@@ -1,9 +1,0 @@
-Climate Science and Environmental Studies
-
-Global climate change represents one of the most significant challenges facing humanity. Greenhouse gases, particularly carbon dioxide from fossil fuel combustion, trap heat in Earth's atmosphere, leading to rising global temperatures.
-
-Ocean acidification occurs when carbon dioxide dissolves in seawater, forming carbonic acid. This process threatens marine ecosystems, particularly organisms with calcium carbonate shells like corals, mollusks, and some plankton species.
-
-Renewable energy technologies offer pathways to reduce greenhouse gas emissions. Solar photovoltaic systems convert sunlight directly into electricity, while wind turbines harness kinetic energy from air movement. Hydroelectric dams and geothermal systems provide additional clean energy sources.
-
-Climate modeling uses complex mathematical equations to simulate Earth's climate system. These models incorporate atmospheric, oceanic, and land surface processes to project future climate scenarios under different greenhouse gas emission pathways.

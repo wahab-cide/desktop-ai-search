@@ -66,7 +66,7 @@ impl FileSystemWatcher {
         sender: &mpsc::UnboundedSender<WatcherEvent>,
         event: Event,
     ) -> Result<()> {
-        let unified_event = match event.kind {
+        match event.kind {
             EventKind::Create(_) => {
                 for path in event.paths {
                     let _ = sender.send(WatcherEvent::Created(path));

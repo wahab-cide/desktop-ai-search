@@ -59,6 +59,12 @@ export interface IndexingStatus {
   indexed: number
   total: number
   current_file?: string
+  errors?: string[]
+  documents_requiring_ocr?: number
+  documents_requiring_transcription?: number
+  ocr_in_progress?: boolean
+  transcription_in_progress?: boolean
+  multimedia_processing_status?: string
 }
 
 export interface FileTypeCount {
@@ -92,6 +98,12 @@ export interface IndexingStatistics {
   last_update?: string
   files_per_second?: number
   bytes_per_second?: number
+  documents_with_ocr?: number
+  documents_with_transcription?: number
+  pending_ocr?: number
+  pending_transcription?: number
+  total_chunks?: number
+  total_embeddings?: number
 }
 
 // File Type with label and count for UI

@@ -5,7 +5,7 @@
   "identifier": "com.desktop.aisearch",
   "build": {
     "beforeDevCommand": "",
-    "beforeBuildCommand": "npm --prefix ./frontend run build",
+    "beforeBuildCommand": "cd frontend && npm run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "./frontend/dist"
   },
